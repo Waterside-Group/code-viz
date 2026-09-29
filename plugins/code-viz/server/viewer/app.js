@@ -522,6 +522,7 @@
   }
 
   function updateHeader() {
+    if (viewMode === 'screen' && shown) return screenHeader();
     if (viewMode === 'feed' && !split) return feedHeader();
     const f = current;
     if (!f) return feedHeader();
@@ -545,9 +546,17 @@
       ui.tabs.appendChild(a);
       if (viewMode === 'feed') requestAnimationFrame(() => a.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
     }
+    if (scr.last) {
+      const t = document.createElement('button');
+      t.className = 'tab' + (viewMode === 'screen' ? ' on' : '');
+      t.title = 'The last terminal or browser screen';
+      t.innerHTML = '<span>' + (scr.last.kind === 'terminal' ? 'Terminal' : 'Browser') + '</span>' + (scr.unseen && viewMode !== 'screen' ? '<span class="dot"></span>' : '');
+      t.onclick = () => openScreen(scr.last);
+      ui.tabs.appendChild(t);
+    }
     for (const f of list) {
       const b = document.createElement('button');
-      b.className = 'tab' + (f === current && (viewMode === 'code' || split) ? ' on' : '');
+      b.className = 'tab' + (f === current && viewMode === 'code' ? ' on' : '');
       b.title = f.rel;
       const name = document.createElement('span');
       name.textContent = basename(f.file);
@@ -721,7 +730,7 @@
     const n = feed.sessions.size;
     ui.chkAct.classList.toggle('ok', n > 0);
     ui.actState.textContent = n ? `following ${n} session${n === 1 ? '' : 's'}` : 'waiting for a Claude Code session';
-    ui.empty.hidden = viewMode === 'feed' && !split ? feed.items.size > 0 : !!current;
+    ui.empty.hidden = viewMode === 'screen' ? true : viewMode === 'feed' && !split ? feed.items.size > 0 : !!current;
   }
 
   // ---------------------------------------------------------------------------
@@ -748,7 +757,7 @@
     if (/\b(live|replay|think)\b/.test(ui.status.className)) setIdle();
   }
   let lastEditAt = 0;
-  const instant = (job) => document.hidden || !!(job && (job.skip || (job.f && job.f !== current)));
+  const instant = (job) => document.hidden || !!(job && (job.skip || (job.f && job.f !== current) || (job.sc && (viewMode !== 'screen' || job.sc !== shown || reduceMotion.matches))));
   const rate = () => speed * (queue.length > 1 ? Math.min(6, queue.length) : 1);
   const wait = (ms, job) => (instant(job) ? Promise.resolve() : sleep(ms / rate()));
 
@@ -1452,7 +1461,7 @@
   }
 
   function setView(mode) {
-    const m = split ? 'code' : mode;
+    const m = split && mode === 'feed' ? (viewMode === 'screen' ? 'screen' : 'code') : mode;
     const changed = m !== viewMode || document.body.dataset.view !== m;
     viewMode = m;
     document.body.dataset.view = m;
@@ -1661,6 +1670,7 @@
       upsertItem(it, true);
       return;
     }
+    if (it.kind === 'tool' && e.target.closest('.fh') && scr.byTool.has(it.id)) return openScreen(scr.byTool.get(it.id));
     if (it.kind === 'tool' && it.meta && it.meta.file && e.target.closest('.fh')) {
       const f = files.get(it.meta.file);
       if (f) showFile(f);
@@ -1765,7 +1775,7 @@
   function applySplit() {
     split = splitMq.matches;
     document.body.classList.toggle('split', split);
-    viewMode = split ? 'code' : current ? viewMode : 'feed';
+    viewMode = split ? (viewMode === 'screen' ? 'screen' : 'code') : current || viewMode === 'screen' ? viewMode : 'feed';
     document.body.dataset.view = viewMode;
     updateHeader();
     renderTabs();
@@ -1773,6 +1783,293 @@
     renderNow();
   }
   splitMq.addEventListener('change', applySplit);
+
+  // ---------------------------------------------------------------------------
+  // Tool screens: shell commands play on a 1990 phosphor terminal, web searches and page
+  // fetches in a browser window. The server builds them from hook events, already redacted and
+  // capped (server/screens.js). They share the animation queue with file edits, so they play
+  // in order and follow the speed setting.
+
+  const sui = { box: $('screen'), host: $('scr-host'), skip: $('scr-skip'), replay: $('scr-replay') };
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const scr = { byId: new Map(), byTool: new Map(), last: null, unseen: false };
+  let shown = null;
+  const LENS = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.2"/><path d="m10.2 10.2 3.3 3.3"/></svg>';
+  const LOCK = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>';
+  const GLOBE = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M2.2 8h11.6M8 2.2c1.8 1.6 2.6 3.6 2.6 5.8S9.8 12.2 8 13.8C6.2 12.2 5.4 10.2 5.4 8S6.2 3.8 8 2.2"/></svg>';
+  const STATUS_WORD = { ok: 'done', error: 'failed', interrupted: 'interrupted', denied: 'denied', background: 'in background', running: 'running' };
+
+  const promptOf = (s) => (s.shell === 'ps' ? 'PS ' + (s.cwd || '~') + '> ' : ((s.cwd || '').split('/').filter(Boolean).pop() || '~') + ' $ ');
+  const screenTitle = (s) => (s.kind === 'terminal' ? s.program || 'Terminal' : s.kind === 'search' ? 'Web search' : s.domain || 'Web page');
+  const kb = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n >= 1024 ? Math.round(n / 1024) + ' KB' : n + ' B');
+  const pathOf = (u) => {
+    try { const x = new URL(u); return (x.pathname === '/' ? x.hostname : x.pathname + x.search) || u; } catch { return u || ''; }
+  };
+  function exitText(s) {
+    const d = s.durationMs != null ? ' · ' + dur(s.durationMs) : '';
+    if (s.status === 'ok') return '[exit 0' + d + ']';
+    if (s.status === 'error') return '[exit ' + (s.exitCode != null ? s.exitCode : '?') + d + ']';
+    if (s.status === 'interrupted') return '^C [interrupted' + d + ']';
+    if (s.status === 'denied') return '[permission denied]';
+    if (s.status === 'background') return '[running in the background' + (s.backgroundTaskId ? ': ' + s.backgroundTaskId : '') + ']';
+    return '';
+  }
+
+  function screenHeader() {
+    const s = shown;
+    ui.fname.textContent = screenTitle(s);
+    ui.fpath.textContent = (s.kind === 'terminal' ? s.cwd : s.kind === 'search' ? s.query : s.url) || ' ';
+    ui.fpath.title = ui.fpath.textContent;
+    ui.ficon.textContent = s.kind === 'terminal' ? '>_' : 'WWW';
+    ui.stats.innerHTML = s.ended ? '<span class="n">' + esc(STATUS_WORD[s.status] || '') + (s.durationMs != null ? ' · ' + dur(s.durationMs) : '') + '</span>' : '';
+    document.title = screenTitle(s) + ' · Code Viz';
+  }
+
+  // Put a screen on the stage (its frame only; the play functions fill it in).
+  function buildScreen(s) {
+    if (s.kind === 'terminal') {
+      sui.host.innerHTML =
+        '<div class="crt ' + (CFG.terminalColor === 'amber' ? 'amber' : 'green') + '"><div class="crt-glass' + (reduceMotion.matches ? '' : ' on') + '">' +
+        '<div class="crt-bar"><span class="crt-prog">' + esc(s.program || 'sh') + '</span><span class="crt-cwd">' + esc(s.cwd || '') + '</span><span class="crt-stat" data-k="stat"></span></div>' +
+        '<div class="crt-body" data-k="body">' + (s.description ? '<div class="crt-rem"># ' + esc(s.description) + '</div>' : '') +
+        '<div class="crt-line"><span class="crt-ps">' + esc(promptOf(s)) + '</span><span data-k="cmd"></span><span class="crt-cur" data-k="cur"></span></div>' +
+        '<div class="crt-line" data-k="wait" hidden><span class="crt-cur"></span></div>' +
+        '<div class="crt-more" data-k="more" hidden></div><pre class="crt-out" data-k="out"></pre><pre class="crt-out crt-err" data-k="err"></pre>' +
+        '<div class="crt-exit" data-k="exit" hidden></div><div class="crt-line" data-k="next" hidden><span class="crt-ps">' + esc(promptOf(s)) + '</span><span class="crt-cur"></span></div></div>' +
+        '</div><div class="crt-plate"><span>CODE VIZ · TERMINAL</span><i></i></div></div>';
+    } else {
+      sui.host.innerHTML =
+        '<div class="brw"><div class="brw-top"><span class="brw-dots" aria-hidden="true"><i></i><i></i><i></i></span>' +
+        '<div class="brw-addr">' + (s.kind === 'search' ? LENS : LOCK) + '<span class="brw-q" data-k="q"></span><span class="brw-cur" data-k="cur"></span></div></div>' +
+        '<div class="brw-load" data-k="load"><i></i></div><div class="brw-page" data-k="page"></div></div>';
+    }
+    sui.host.dataset.id = String(s.id);
+  }
+  const part = (k) => sui.host.querySelector('[data-k="' + k + '"]');
+
+  async function typeInto(job, el, text) {
+    if (!el) return;
+    if (instant(job) || !text) {
+      el.textContent = text;
+      return;
+    }
+    await stepper(job, text.length, Math.max(38, text.length / 1.6), (n) => (el.textContent = text.slice(0, n)));
+  }
+  async function streamLines(job, el, text, after) {
+    if (!el || !text) return;
+    const lines = text.split('\n');
+    if (instant(job)) {
+      el.textContent = text;
+      after();
+      return;
+    }
+    await stepper(job, lines.length, clamp(lines.length / 1.4, 24, 600), (n) => {
+      el.textContent = lines.slice(0, n).join('\n');
+      after();
+    });
+  }
+  // Wait for the result. Gives up (the result then plays as its own step) when other work is
+  // queued, so a long command doesn't hold up the file edits behind it.
+  async function waitEnded(job, s) {
+    const t0 = performance.now();
+    while (!s.ended) {
+      const waited = performance.now() - t0;
+      if (job.skip || (queue.length && waited > 1500) || waited > 10 * 60e3) return false;
+      await sleep(80);
+    }
+    return true;
+  }
+
+  // phase: 'type' (type the command, then the result), 'show' (command at once), 'continue'
+  // (the command is already on screen).
+  async function playTerminal(job, s, phase) {
+    const body = part('body');
+    const down = () => { if (body) body.scrollTop = body.scrollHeight; };
+    if (phase === 'type') await typeInto(job, part('cmd'), s.command || '');
+    else if (phase === 'show') part('cmd').textContent = s.command || '';
+    part('cur').hidden = true;
+    part('wait').hidden = !!s.ended;
+    part('stat').innerHTML = s.ended ? esc(STATUS_WORD[s.status] || '') : '<span class="el" data-t0="' + s.ts + '">' + tick(Date.now() - s.ts) + '</span> running';
+    down();
+    if (!s.ended && !(await waitEnded(job, s))) return false;
+    part('wait').hidden = true;
+    part('stat').textContent = STATUS_WORD[s.status] || '';
+    const out = s.output || { text: '' };
+    if (out.dropped) {
+      part('more').hidden = false;
+      part('more').textContent = '... ' + out.dropped.toLocaleString() + ' earlier line' + (out.dropped === 1 ? '' : 's') + ' not shown';
+    }
+    await streamLines(job, part('out'), out.text, down);
+    await streamLines(job, part('err'), (s.stderr && s.stderr.text) || '', down);
+    const ex = part('exit');
+    ex.textContent = exitText(s);
+    ex.className = 'crt-exit' + (s.status === 'ok' || s.status === 'background' ? '' : ' bad');
+    ex.hidden = !ex.textContent;
+    part('next').hidden = false;
+    down();
+    return true;
+  }
+
+  function renderPage(s) {
+    const bad = s.status === 'error' || s.status === 'denied' || s.status === 'interrupted';
+    let h = '';
+    if (s.kind === 'search') {
+      h += '<div class="brw-engine">' + LENS + '<span>Web search' + (s.domains && s.domains.length ? ' · only ' + esc(s.domains.join(', ')) : '') + '</span></div>';
+      h += '<h2 class="brw-h">' + esc(s.query || '') + '</h2>';
+      h += '<div class="brw-meta">' + [s.results ? s.results.length + ' result' + (s.results.length === 1 ? '' : 's') : '', s.durationMs != null ? dur(s.durationMs) : ''].filter(Boolean).join(' · ') + '</div><ol class="brw-res">';
+      for (const r of s.results || []) {
+        const u = safeUrl(r.url);
+        h +=
+          '<li class="stag"><div class="brw-dom"><span class="brw-fav">' + esc((r.domain || '?')[0].toUpperCase()) + '</span>' + esc(r.domain || '') + '</div>' +
+          (u ? '<a class="brw-title" href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + esc(r.title) + '</a>' : '<span class="brw-title">' + esc(r.title) + '</span>') +
+          '<div class="brw-url">' + esc(r.url) + '</div></li>';
+      }
+      h += '</ol>';
+      if (s.summary) h += '<div class="brw-sum stag' + (bad ? ' brw-err' : '') + '"><b>' + (bad ? 'Error' : 'Summary returned with the results') + '</b>' + esc(s.summary) + '</div>';
+    } else {
+      h += '<div class="brw-engine">' + GLOBE + '<span>' + esc(s.domain || '') + '</span></div>';
+      h += '<h2 class="brw-h">' + esc(pathOf(s.url)) + '</h2>';
+      h += '<div class="brw-meta">' + [s.http ? (s.http.code + ' ' + (s.http.text || '')).trim() : '', s.http && s.http.bytes != null ? kb(s.http.bytes) : '', s.durationMs != null ? dur(s.durationMs) : ''].filter(Boolean).map(esc).join(' · ') + '</div>';
+      if (s.prompt) h += '<div class="brw-ask stag">Claude asked about this page: ' + esc(s.prompt) + '</div>';
+      h += '<article class="brw-art stag' + (bad ? ' brw-err' : '') + '">' + esc(s.summary || (bad ? 'The page could not be fetched.' : '')) + '</article>';
+    }
+    part('page').innerHTML = h;
+  }
+
+  async function playBrowser(job, s, phase) {
+    const text = s.kind === 'search' ? s.query || '' : s.url || '';
+    if (phase === 'type') await typeInto(job, part('q'), text);
+    else if (phase === 'show') part('q').textContent = text;
+    part('cur').hidden = true;
+    if (!s.ended) {
+      part('load').className = 'brw-load busy';
+      if (!(await waitEnded(job, s))) return false;
+    }
+    part('load').className = 'brw-load done';
+    renderPage(s);
+    const items = [...part('page').querySelectorAll('.stag')];
+    if (!instant(job)) {
+      for (const el of items) el.classList.add('in');
+      for (const el of items) {
+        await wait(60, job);
+        el.classList.remove('in');
+      }
+    }
+    return true;
+  }
+
+  // mode: 'start' (from PreToolUse), 'result' (a result that arrived after its start finished
+  // playing), 'replay'.
+  async function runScreen(job, s, mode) {
+    job.sc = s;
+    s._pending = true;
+    scr.last = s;
+    const onStage = sui.host.dataset.id === String(s.id);
+    if (mode === 'replay' || follow || viewMode === 'screen' || (!current && !split && viewMode !== 'feed')) showScreen(s);
+    else {
+      scr.unseen = true;
+      renderTabs();
+    }
+    const phase = mode === 'result' && onStage ? 'continue' : mode === 'result' ? 'show' : 'type';
+    if (phase !== 'continue') buildScreen(s);
+    sui.skip.hidden = viewMode !== 'screen';
+    sui.replay.hidden = true;
+    setStatus('live', s.kind === 'terminal' ? 'Running ' + (s.program || 'a command') : s.kind === 'search' ? 'Searching the web' : 'Fetching a page');
+    const done = s.kind === 'terminal' ? await playTerminal(job, s, phase) : await playBrowser(job, s, phase);
+    s._pending = false;
+    s._waiting = !done;
+    sui.skip.hidden = true;
+    sui.replay.hidden = !s.ended;
+    if (shown === s && viewMode === 'screen') {
+      updateHeader();
+      if (done) flash(s.status === 'ok' || s.status === 'background' ? 'ok' : 'bad', s.kind === 'terminal' ? (s.status === 'ok' ? 'Command done' : 'Command ' + (STATUS_WORD[s.status] || 'ended')) : s.status === 'ok' ? 'Page loaded' : 'Request failed', 1600);
+    }
+  }
+
+  function showScreen(s) {
+    shown = s;
+    scr.last = s;
+    scr.unseen = false;
+    if (current && viewMode === 'code') current.scroll = ui.code.scrollTop;
+    hideCard();
+    setView('screen');
+    updateHeader();
+    renderTabs();
+    updateEmpty();
+  }
+  // Show a screen in its current state at once (a tab or feed card was clicked).
+  function openScreen(s) {
+    if (!s) return;
+    showScreen(s);
+    if (sui.host.dataset.id !== String(s.id) || !(running && running.sc === s)) {
+      buildScreen(s);
+      const job = { skip: true, sc: s };
+      (s.kind === 'terminal' ? playTerminal(job, s, 'show') : playBrowser(job, s, 'show')).then(() => {
+        sui.replay.hidden = !s.ended;
+        updateHeader();
+      });
+    }
+  }
+
+  async function replayScreen(id) {
+    let s = scr.byId.get(Number(id));
+    if (!s || !s.ended) {
+      try {
+        const r = await fetch('/__cv/screen/' + id);
+        if (r.ok) s = Object.assign(s || {}, await r.json());
+      } catch {}
+    }
+    if (!s || !s.kind) return flash('bad', 'That screen is no longer available', 1800);
+    scr.byId.set(s.id, s);
+    if (running && running.kind === 'replay') running.skip = true;
+    for (const j of queue) if (j.kind === 'replay') j.skip = true;
+    enqueue({ kind: 'replay', run: (job) => runScreen(job, s, 'replay') });
+  }
+
+  function addScreenTick(m) {
+    const label = m.label != null ? m.label : m.kind === 'terminal' ? (m.command || '').split('\n')[0] : m.kind === 'search' ? m.query : m.url;
+    const what = m.kind === 'terminal' ? 'Command' : m.kind === 'search' ? 'Search' : 'Fetch';
+    const b = document.createElement('button');
+    b.className = 'tick ' + (m.kind === 'terminal' ? 'tt' : 'tb');
+    b.style.setProperty('--h', '9px');
+    b.title = what + ': ' + String(label || '').slice(0, 120) + '\n' + time(m.ts) + ' · Click to replay';
+    b.setAttribute('aria-label', 'Replay ' + what.toLowerCase() + ' ' + String(label || '').slice(0, 80) + ' at ' + time(m.ts));
+    b.onclick = () => replayScreen(m.id);
+    ui.timeline.appendChild(b);
+    while (ui.timeline.children.length > 300) ui.timeline.firstChild.remove();
+    ui.timeline.scrollLeft = ui.timeline.scrollWidth;
+  }
+
+  function onScreenStart(d) {
+    const s = Object.assign({}, d);
+    scr.byId.set(s.id, s);
+    scr.byTool.set(s.toolUseId, s);
+    s._pending = true;
+    addScreenTick(s);
+    // Real-time work first: an animation still replaying an older edit or screen is skipped.
+    if (running && running.kind === 'replay') running.skip = true;
+    enqueue({ kind: 'screen', run: (job) => runScreen(job, s, 'start') });
+  }
+  function onScreenEnd(d) {
+    let s = scr.byId.get(d.id);
+    if (!s) {
+      s = Object.assign({}, d);
+      scr.byId.set(s.id, s);
+      scr.byTool.set(s.toolUseId, s);
+      s._pending = true;
+      addScreenTick(s);
+      return enqueue({ kind: 'screen', run: (job) => runScreen(job, s, 'start') });
+    }
+    Object.assign(s, d);
+    // Its start is still queued or playing, and picks the result up itself.
+    if (s._pending && !s._waiting) return;
+    s._waiting = false;
+    enqueue({ kind: 'screen', run: (job) => runScreen(job, s, 'result') });
+  }
+  sui.skip.onclick = () => {
+    if (running && running.sc === shown) running.skip = true;
+  };
+  sui.replay.onclick = () => shown && replayScreen(shown.id);
 
   // ---------------------------------------------------------------------------
   // Token usage: the session gauge, and per-repo totals (aggregated by the server from the
@@ -1895,7 +2192,8 @@
     }
     edits.length = 0;
     ui.timeline.textContent = '';
-    for (const e of d.history || []) addTimeline(e);
+    const ticks = [...(d.history || []).map((e) => ({ t: e.ts, e })), ...(d.screens || []).map((m) => ({ t: m.ts, m }))].sort((a, b) => a.t - b.t);
+    for (const k of ticks) k.e ? addTimeline(k.e) : addScreenTick(k.m);
     if (!current && !files.size && d.latest) {
       const f = fileState(d.latest.file, d.latest);
       f.text = d.latest.after;
@@ -2051,6 +2349,8 @@
     on('act-delta', onActDelta);
     on('act-state', onActState);
     on('usage', onUsage);
+    on('screen-start', onScreenStart);
+    on('screen-end', onScreenEnd);
     es.onerror = () => {
       connected = false;
       if (!running) setStatus('bad', 'Disconnected');
@@ -2113,6 +2413,7 @@
     setAuthors(authorsOn);
     ui.authors.onclick = () => setAuthors(!authorsOn);
     ui.replay.onclick = () => {
+      if (viewMode === 'screen' && shown) return replayScreen(shown.id);
       const own = current ? edits.filter((e) => e.file === current.file) : [];
       const list = own.length ? own : edits;
       if (list.length) replay(list[list.length - 1].id);

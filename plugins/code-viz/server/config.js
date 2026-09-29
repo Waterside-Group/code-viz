@@ -24,7 +24,12 @@ const DEFAULTS = {
   usagePeriod: 'today',
   sessionTokenBudget: null,
   burnWindowMinutes: 20,
+  terminalScreen: true,
+  browserScreen: true,
+  terminalColor: 'green',
+  screenLines: 200,
 };
+const COLORS = new Set(['green', 'amber']);
 const THEMES = new Set(['auto', 'light', 'dark']);
 const PERIODS = new Set(['today', 'window']);
 const SPEEDS = new Set([0.5, 1, 2, 4]);
@@ -74,6 +79,10 @@ function load() {
     usagePeriod: PERIODS.has(file.usagePeriod) ? file.usagePeriod : DEFAULTS.usagePeriod,
     sessionTokenBudget: positive(file.sessionTokenBudget, DEFAULTS.sessionTokenBudget),
     burnWindowMinutes: Math.min(120, Math.max(5, positive(file.burnWindowMinutes, DEFAULTS.burnWindowMinutes))),
+    terminalScreen: pick(bool(file.terminalScreen), DEFAULTS.terminalScreen),
+    browserScreen: pick(bool(file.browserScreen), DEFAULTS.browserScreen),
+    terminalColor: COLORS.has(file.terminalColor) ? file.terminalColor : DEFAULTS.terminalColor,
+    screenLines: Math.round(Math.min(2000, Math.max(10, positive(file.screenLines, DEFAULTS.screenLines)))),
     error,
   };
 }
@@ -85,7 +94,7 @@ function positive(v, fallback) {
 // The options the viewer applies at page load (as defaults for its footer toggles).
 function viewerOptions(cfg) {
   const c = cfg || load();
-  return { theme: c.theme, speed: c.speed, follow: c.follow, wrap: c.wrap, authors: c.authors, usage: c.usage };
+  return { theme: c.theme, speed: c.speed, follow: c.follow, wrap: c.wrap, authors: c.authors, usage: c.usage, terminalColor: c.terminalColor };
 }
 
 module.exports = { HOME, FILE, DEFAULTS, readFile, load, viewerOptions };

@@ -5,7 +5,9 @@ Watch Claude work. Code Viz is a [Claude Code](https://code.claude.com) plugin t
 - **Activity**: a live feed of everything Claude does. Your prompts, each thinking block ("Thought for 8s"), Claude's replies, and every tool call as a card: shell commands and CLIs (git, npm, GitHub, curl, psql and more), MCP calls (database queries show the returned rows as a table), file reads and searches. A card shows a spinner and a running clock while its tool runs, then its duration and output, or the error. Between tool calls a "Thinking" row counts up, so you can see Claude is working before anything is written.
 - **Code**: the file Claude is editing, with every change animated. New code is typed in with a caret, removed lines turn red and fold away, small edits are backspaced and retyped in place, and changed lines keep a marker in the gutter. Next to the line numbers, a column shows who last changed each line.
 
-With **Follow** on (the target button in the footer), the viewer switches to the code when Claude edits a file and back to the feed when it moves on. Wide windows (1100px and up) show both side by side.
+Tool calls get **screens** of their own: shell commands type out on a 1990 phosphor terminal and stream their output, and web searches and page fetches load in a browser window. See [Tool screens](#tool-screens).
+
+With **Follow** on (the target button in the footer), the viewer switches to the code when Claude edits a file (or to the screen when it runs a command or searches) and back to the feed when it moves on. Wide windows (1100px and up) show both side by side.
 
 A **usage** strip under the header shows the plan's 5-hour session (how much is used, when it resets, and an ETA at the current pace) and expands to token totals for each repository Claude is working in. See [Token usage](#token-usage).
 
@@ -105,6 +107,10 @@ Settings live in `~/.claude/code-viz/config.json`. The file is optional; create 
 | `usage` | | `true` | Default for the usage strip (the gauge button in the footer). Code Viz starts reading transcripts for usage only when a viewer with the strip on (or `code-viz usage`) first asks. |
 | `usagePeriod` | | `"today"` | What the per-repo totals cover: `"today"` (since local midnight) or `"window"` (the current 5-hour session). |
 | `sessionTokenBudget` | | none | Your own token budget for a 5-hour session, used for an ETA when the plan percent isn't available. Counted like the totals (cache reads excluded). |
+| `terminalScreen` | | `true` | Play shell commands (Bash and PowerShell) on the terminal screen. |
+| `browserScreen` | | `true` | Play web searches and page fetches on the browser screen. |
+| `terminalColor` | | `"green"` | Phosphor color of the terminal: `"green"` or `"amber"`. |
+| `screenLines` | | `200` | How many lines of a command's output the terminal keeps (the last ones). 10 to 2000. |
 | `burnWindowMinutes` | | `20` | How many recent minutes the pace (tokens per minute, and percent per minute) is measured over. 5 to 120. |
 | `upstream` | `CODE_VIZ_UPSTREAM` | `https://api.anthropic.com` | Live mode only: where the proxy forwards requests. `code-viz live on` sets it for you. |
 | `eagerStreaming` | `CODE_VIZ_EAGER=0` turns it off | `true` | Live mode only. See [Live mode](#live-mode). |
@@ -128,6 +134,28 @@ For files in a git repository, the column next to the line numbers shows who las
 - Sign in: `gh auth login` (or `/code-viz:setup`).
 - Sign out: `gh auth logout`. Code Viz stops asking GitHub within 10 minutes (right away after `code-viz restart`). Profiles it already looked up stay in `github-cache.json`; delete that file to forget them.
 - Keep Code Viz off GitHub even while `gh` is signed in: set `"github": false`.
+
+## Tool screens
+
+When Claude runs a command or goes to the web, the stage shows it the way you would see it:
+
+- **Terminal** (the Bash and PowerShell tools): a green or amber CRT from around 1990, with scanlines, a soft glow, curved glass and a blinking block cursor. Claude's description of the command appears as a comment, the command types out at the prompt, a cursor waits while it runs (with a running clock), then the output streams in below it, stderr tinted, and the exit status: `[exit 0 · 1.2s]`, `[exit 1 · 0.4s]` in inverse video, `^C [interrupted]`, or a note for commands sent to the background.
+- **Browser** (WebSearch and WebFetch): the query or URL types into the address bar, a loading bar runs until the result is in, then the page renders. A search shows each result's title, domain and URL, plus the summary text that came back with the results. A fetch shows the domain, the HTTP status and size, what Claude asked about the page, and the answer it got.
+
+**What counts as a CLI.** Every shell command gets the terminal. The title bar names the program that matters in the command line, the same way the activity feed does: `git status`, `GitHub CLI pr`, `npm test`, `curl api.example.com`, `xcodebuild`, or the program's own name, or `sh`. MCP tool calls don't get a screen: they are often rapid-fire (a browser automation can make dozens of calls a minute), which would make the stage flicker and hold up file edits, and their card in the activity feed already shows the call, its input and its result.
+
+**Playing, replaying and skipping.** Screens queue with file edits and play in order, at the speed set in the footer. A long-running command doesn't hold the queue: if other work is waiting, the edit plays, and the command's output plays when it arrives. Each screen gets a tick in the timeline (green for commands, purple for the web); click one to replay it. While a screen plays, **Skip** jumps to its end; afterwards, **Replay** plays it again. The Terminal or Browser tab reopens the last screen, and clicking a command's card in the feed opens its screen. With reduced motion turned on in your system settings, screens show their text at once, without typing, flicker or the power-on effect.
+
+**Where the data comes from.** The `PreToolUse` hook starts a screen (the command, query or URL), and `PostToolUse` or `PostToolUseFailure` finishes it (stdout and stderr, or the failure text and its `Exit code N` line; the search results; the fetch status and answer). Search results carry titles and URLs only, so there are no per-result snippets.
+
+**Kept local, capped and redacted.** Screens exist only in the local viewer and in the server's memory (the last 100). Output keeps the last `screenLines` lines, each cut at 400 characters. Before anything is stored or shown, Code Viz redacts obvious secrets from commands, output, queries, URLs and summaries, and from the tool cards in the activity feed as well:
+
+- tokens with a known shape: Anthropic, OpenAI, GitHub, GitLab, Slack, AWS access keys, Google API keys, Stripe, npm and Supabase tokens, JWTs, and private key blocks;
+- `Authorization`, `Cookie` and API-key headers, and `Bearer` tokens;
+- `.env` and shell style `NAME=value` where the name contains a secret word (`SECRET`, `TOKEN`, `PASSWORD`, `API_KEY`, `ACCESS_KEY`, `PRIVATE_KEY`, `CLIENT_SECRET`, `CREDENTIALS`, `DATABASE_URL`, `DSN` and similar), and the same names as JSON or YAML keys;
+- credentials inside URLs (`https://user:pass@host`) and secret query parameters (`token`, `access_token`, `api_key`, `key`, `secret`, `password`, `signature` and similar).
+
+Redaction is a safety net for common shapes, not a guarantee; a secret in an unusual format can still show. Turn a screen type off with `terminalScreen` or `browserScreen`.
 
 ## Token usage
 
@@ -222,6 +250,8 @@ plugins/code-viz/
   server/transcripts.js           follows session transcripts (hook paths, a folder watch, a startup scan)
   server/blame.js                 line authors: git blame, plus GitHub identities via gh
   server/usage.js                 token usage per repo from transcripts, and the 5-hour session
+  server/screens.js               terminal and browser screens from hook events
+  server/redact.js                removes obvious secrets from commands and output
   server/partial-json.js          incremental parser for streamed tool input
   server/demo.js                  the demo
   server/viewer/                  the viewer (index.html, app.js, style.css, diff.js)
@@ -240,7 +270,8 @@ plugins/code-viz/
 
 ## Limits
 
-- Only `Write` and `Edit` are animated in the code view. Changes made through Bash (`sed`, formatters, `git checkout`) appear in the feed as commands, not as edits.
+- Only `Write` and `Edit` are animated in the code view. Changes made through Bash (`sed`, formatters, `git checkout`) appear as commands on the terminal and in the feed, not as edits.
+- The terminal shows a command's output when it finishes, not while it runs: Claude Code's hooks report the output only at the end.
 - Without live mode, thinking can't stream token by token: a thinking block appears once Claude finishes it. The "Thinking" row shows that Claude is working in the meantime.
 - The feed reads every recent session on this machine, so parallel sessions show up together, labeled by project.
 - Uncommitted lines are credited to Claude only if Code Viz saw Claude write them; other uncommitted lines go to your git user.

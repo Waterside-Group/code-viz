@@ -16,6 +16,7 @@
 
 const path = require('path');
 const crypto = require('crypto');
+const { redact } = require('./redact');
 
 const MAX_ITEMS = 600;
 const MAX_INPUT = 16000;
@@ -257,6 +258,8 @@ const rel = (file, cwd) => {
 function classify(name, input, cwd) {
   const meta = classifyTool(String(name || ''), input && typeof input === 'object' ? input : {}, cwd);
   meta.label = SERVICES[meta.svc] || meta.svc;
+  // Commands, queries and URLs can carry secrets (see redact.js).
+  for (const k of ['title', 'sub', 'detail']) if (typeof meta[k] === 'string') meta[k] = redact(meta[k]);
   return meta;
 }
 
@@ -364,7 +367,8 @@ function tableFrom(text) {
 }
 
 function summarizeOutput(text, meta) {
-  const out = { text: cap(text || '', MAX_OUTPUT) };
+  text = redact(text || '');
+  const out = { text: cap(text, MAX_OUTPUT) };
   if (meta && (meta.lang === 'sql' || meta.svc === 'supabase')) {
     const t = tableFrom(text);
     if (t) out.table = t;
@@ -649,7 +653,7 @@ function trimInput(input) {
   if (!input || typeof input !== 'object') return input;
   const out = {};
   for (const [k, v] of Object.entries(input)) {
-    if (typeof v === 'string') out[k] = cap(v, k === 'content' || k === 'new_string' || k === 'old_string' ? 2000 : MAX_INPUT);
+    if (typeof v === 'string') out[k] = k === 'content' || k === 'new_string' || k === 'old_string' ? cap(v, 2000) : cap(redact(v), MAX_INPUT);
     else out[k] = v;
   }
   let size = 0;

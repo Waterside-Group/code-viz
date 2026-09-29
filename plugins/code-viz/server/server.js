@@ -23,6 +23,7 @@ const { Blamer } = require('./blame');
 const { Activity, classify } = require('./activity');
 const { Transcripts } = require('./transcripts');
 const { Usage } = require('./usage');
+const { Screens } = require('./screens');
 const settings = require('./config');
 
 const VERSION = require('../.claude-plugin/plugin.json').version;
@@ -79,6 +80,7 @@ setInterval(() => {
 }, 15000).unref();
 
 const activity = new Activity({ broadcast, log });
+const screens = new Screens({ broadcast, settings, log });
 const usage = new Usage({ log, settings, onChange: () => { if (usage.started) broadcast('usage', usage.snapshot()); } });
 const transcripts = new Transcripts({ onEntry: (entry, ctx) => activity.fromTranscript(entry, ctx), onFile: (file) => usage.touch(file), log });
 
@@ -168,6 +170,7 @@ function handleHook(p, entry) {
     usage.touch(p.transcript_path);
   }
   try { activity.fromHook(p, entry); } catch (e) { log('activity hook error', e.stack); }
+  try { screens.fromHook(p); } catch (e) { log('screen hook error', e.stack); }
   if (event === 'SessionStart') {
     broadcast('session', { session: p.session_id, cwd: p.cwd, source: p.source });
     return;
@@ -625,6 +628,7 @@ function openEvents(req, res) {
     history: history.map(meta),
     latest: history.length ? history[history.length - 1] : null,
     activity: activity.snapshot(),
+    screens: screens.list(),
   });
   clients.add(res);
   req.on('close', () => clients.delete(res));
@@ -653,6 +657,11 @@ function local(req, res, pathname, url) {
     }
     if (pathname === '/__cv/health') {
       return json(res, 200, { name: 'code-viz', version: VERSION, pid: process.pid, port: PORT, upstream: UPSTREAM.origin, live: liveInfo(), github: blamer.githubStatus(), viewers: clients.size });
+    }
+    const sm = pathname.match(/^\/__cv\/screen\/(\d+)$/);
+    if (sm) {
+      const sc = screens.get(sm[1]);
+      return sc ? json(res, 200, sc) : json(res, 404, { error: 'not found' });
     }
     const m = pathname.match(/^\/__cv\/edit\/(\d+)$/);
     if (m) {

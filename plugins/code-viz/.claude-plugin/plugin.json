@@ -1,8 +1,8 @@
 {
   "name": "code-viz",
   "displayName": "Code Viz",
-  "version": "0.6.0",
-  "description": "Watch Claude work. A local viewer with a live activity feed (prompts, thinking, and every tool call) that opens each file Claude edits and animates every insertion, deletion and rewrite, with the author of each line from git, and token usage per repo with the 5-hour session gauge.",
+  "version": "0.7.0",
+  "description": "Watch Claude work. A local viewer with a live activity feed (prompts, thinking, and every tool call) that opens each file Claude edits and animates every insertion, deletion and rewrite, with the author of each line from git, token usage per repo with the 5-hour session gauge, and terminal and browser screens for commands and web lookups.",
   "author": {
     "name": "Waterside Group",
     "url": "https://github.com/Waterside-Group"
