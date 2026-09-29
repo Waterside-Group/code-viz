@@ -26,14 +26,14 @@ const DEFAULTS = {
   burnWindowMinutes: 20,
   terminalScreen: true,
   browserScreen: true,
-  terminalColor: 'green',
+  terminalColor: 'orange',
   screenLines: 200,
   checkForUpdates: true,
   updateCheckIntervalHours: 6,
   updateOn: 'commit',
 };
 const UPDATE_ON = new Set(['commit', 'version']);
-const COLORS = new Set(['green', 'amber']);
+const COLORS = new Set(['orange', 'green', 'amber']);
 const THEMES = new Set(['auto', 'light', 'dark']);
 const PERIODS = new Set(['today', 'window']);
 const SPEEDS = new Set([0.5, 1, 2, 4]);

@@ -1829,7 +1829,7 @@
   function buildScreen(s) {
     if (s.kind === 'terminal') {
       sui.host.innerHTML =
-        '<div class="crt ' + (CFG.terminalColor === 'amber' ? 'amber' : 'green') + '"><div class="crt-glass' + (reduceMotion.matches ? '' : ' on') + '">' +
+        '<div class="crt ' + (['green', 'amber', 'orange'].includes(CFG.terminalColor) ? CFG.terminalColor : 'orange') + '"><div class="crt-glass' + (reduceMotion.matches ? '' : ' on') + '">' +
         '<div class="crt-bar"><span class="crt-prog">' + esc(s.program || 'sh') + '</span><span class="crt-cwd">' + esc(s.cwd || '') + '</span><span class="crt-stat" data-k="stat"></span></div>' +
         '<div class="crt-body" data-k="body">' + (s.description ? '<div class="crt-rem"># ' + esc(s.description) + '</div>' : '') +
         '<div class="crt-line"><span class="crt-ps">' + esc(promptOf(s)) + '</span><span data-k="cmd"></span><span class="crt-cur" data-k="cur"></span></div>' +

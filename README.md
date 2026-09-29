@@ -110,7 +110,7 @@ Settings live in `~/.claude/code-viz/config.json`. The file is optional; create 
 | `sessionTokenBudget` | | none | Your own token budget for a 5-hour session, used for an ETA when the plan percent isn't available. Counted like the totals (cache reads excluded). |
 | `terminalScreen` | | `true` | Play shell commands (Bash and PowerShell) on the terminal screen. |
 | `browserScreen` | | `true` | Play web searches and page fetches on the browser screen. |
-| `terminalColor` | | `"green"` | Phosphor color of the terminal: `"green"` or `"amber"`. |
+| `terminalColor` | | `"orange"` | Phosphor color of the terminal: `"orange"` (Claude orange, `#D97757`), `"green"` or `"amber"`. |
 | `screenLines` | | `200` | How many lines of a command's output the terminal keeps (the last ones). 10 to 2000. |
 | `burnWindowMinutes` | | `20` | How many recent minutes the pace (tokens per minute, and percent per minute) is measured over. 5 to 120. |
 | `upstream` | `CODE_VIZ_UPSTREAM` | `https://api.anthropic.com` | Live mode only: where the proxy forwards requests. `code-viz live on` sets it for you. |
@@ -140,7 +140,7 @@ For files in a git repository, the column next to the line numbers shows who las
 
 When Claude runs a command or goes to the web, the stage shows it the way you would see it:
 
-- **Terminal** (the Bash and PowerShell tools): the stage becomes a green or amber phosphor screen from around 1990, edge to edge, with scanlines, a soft flicker and glow, and a blinking block cursor. A status line at the top names the program and the working directory. Claude's description of the command appears as a comment, the command types out at the prompt, a cursor waits while it runs (with a running clock), then the output streams in below it, stderr tinted, and the exit status: `[exit 0 · 1.2s]`, `[exit 1 · 0.4s]` in inverse video, `^C [interrupted]`, or a note for commands sent to the background.
+- **Terminal** (the Bash and PowerShell tools): the stage becomes a phosphor screen from around 1990, edge to edge, in Claude orange by default (or green or amber, see `terminalColor`), with scanlines, a soft flicker and glow, and a blinking block cursor. A status line at the top names the program and the working directory. Claude's description of the command appears as a comment, the command types out at the prompt, a cursor waits while it runs (with a running clock), then the output streams in below it, stderr tinted, and the exit status: `[exit 0 · 1.2s]`, `[exit 1 · 0.4s]` in inverse video, `^C [interrupted]`, or a note for commands sent to the background.
 - **Browser** (WebSearch and WebFetch): the query or URL types into the address bar, a loading bar runs until the result is in, then the page renders. A search shows each result's title, domain and URL, plus the summary text that came back with the results. A fetch shows the domain, the HTTP status and size, what Claude asked about the page, and the answer it got.
 
 **What counts as a CLI.** Every shell command gets the terminal. The title bar names the program that matters in the command line, the same way the activity feed does: `git status`, `GitHub CLI pr`, `npm test`, `curl api.example.com`, `xcodebuild`, or the program's own name, or `sh`. MCP tool calls don't get a screen: they are often rapid-fire (a browser automation can make dozens of calls a minute), which would make the stage flicker and hold up file edits, and their card in the activity feed already shows the call, its input and its result.

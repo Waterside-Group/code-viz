@@ -754,6 +754,9 @@ body.split .screen { right: var(--fw); }
   --ph: #3dff7f;
   --ph-dim: rgba(61, 255, 127, 0.5);
   --ph-bg: #031106;
+  /* Bright text (prompt, command, cursor, badges) and stderr; orange sets its own. */
+  --ph-hi: var(--ph);
+  --ph-err: color-mix(in srgb, var(--ph) 55%, #ff7a5c);
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -761,6 +764,10 @@ body.split .screen { right: var(--fw); }
   flex-direction: column;
 }
 .crt.amber { --ph: #ffb52e; --ph-dim: rgba(255, 181, 46, 0.5); --ph-bg: #130b01; }
+/* Claude orange, #D97757: output 6.3:1 on the screen (5.1:1 under the scanlines), bright
+   text a lighter tint, dim text and stderr darker shades that stay readable. */
+.crt.orange { --ph: #d97757; --ph-hi: #f2a285; --ph-low: #a85d45; --ph-err: #e0664c; --ph-dim: rgba(217, 119, 87, 0.45); --ph-bg: #140a07; }
+.crt.orange .crt-rem, .crt.orange .crt-more { opacity: 1; color: var(--ph-low); }
 .crt-glass {
   position: relative;
   flex: 1;
@@ -778,21 +785,21 @@ body.split .screen { right: var(--fw); }
 .crt-glass::before { content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; background: repeating-linear-gradient(rgba(0, 0, 0, 0.3) 0 1px, transparent 1px 3px); }
 .crt-glass.on { animation: crt-on 0.45s ease-out, crt-flicker 7s infinite; }
 .crt-bar { flex: none; display: flex; align-items: baseline; gap: 12px; min-width: 0; padding: 10px 18px 6px; font-size: 12px; letter-spacing: 0.08em; }
-.crt-prog { flex: none; padding: 0 6px; background: var(--ph); color: var(--ph-bg); text-shadow: none; text-transform: uppercase; box-shadow: 0 0 10px var(--ph-dim); }
+.crt-prog { flex: none; padding: 0 6px; background: var(--ph-hi); color: var(--ph-bg); text-shadow: none; text-transform: uppercase; box-shadow: 0 0 10px var(--ph-dim); }
 .crt-cwd { flex: 1; min-width: 0; overflow: hidden; opacity: 0.75; text-overflow: ellipsis; white-space: nowrap; }
 .crt-stat { flex: none; text-transform: uppercase; }
 .crt-body { flex: 1; min-height: 0; overflow: hidden auto; padding: 4px 18px 44px; scrollbar-width: none; }
 .crt-body::-webkit-scrollbar { display: none; }
 .crt-rem, .crt-more { opacity: 0.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .crt-more[hidden] { display: none; }
-.crt-line { white-space: pre-wrap; overflow-wrap: anywhere; }
+.crt-line { color: var(--ph-hi); white-space: pre-wrap; overflow-wrap: anywhere; }
 .crt-out { margin: 0; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
 .crt-out:empty { display: none; }
-.crt-err { color: color-mix(in srgb, var(--ph) 55%, #ff7a5c); }
+.crt-err { color: var(--ph-err); }
 .crt-exit { margin-top: 6px; }
 .crt-exit[hidden] { display: none; }
-.crt-exit.bad { display: inline-block; padding: 0 6px; background: var(--ph); color: var(--ph-bg); text-shadow: none; }
-.crt-cur { display: inline-block; width: 0.62em; height: 1.18em; margin-left: 1px; vertical-align: text-bottom; background: var(--ph); box-shadow: 0 0 8px var(--ph-dim); animation: crt-blink 1.06s steps(2, start) infinite; }
+.crt-exit.bad { display: inline-block; padding: 0 6px; background: var(--ph-hi); color: var(--ph-bg); text-shadow: none; }
+.crt-cur { display: inline-block; width: 0.62em; height: 1.18em; margin-left: 1px; vertical-align: text-bottom; background: var(--ph-hi); box-shadow: 0 0 8px var(--ph-dim); animation: crt-blink 1.06s steps(2, start) infinite; }
 .crt-cur[hidden] { display: none; }
 @keyframes crt-blink { to { visibility: hidden; } }
 @keyframes crt-flicker { 0%, 100% { opacity: 1; } 46% { opacity: 0.99; } 47% { opacity: 0.955; } 48% { opacity: 0.99; } }
