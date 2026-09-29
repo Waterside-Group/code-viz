@@ -741,12 +741,15 @@ body[data-view="screen"] .screen { display: flex; }
 body[data-view="screen"] .code, body[data-view="screen"] .marks, body[data-view="screen"] .banner { visibility: hidden; }
 body[data-view="screen"] .people { display: none; }
 body.split .screen { right: var(--fw); }
+.screen.term { padding: 0; }
 .scr-host { flex: 1; min-height: 0; display: flex; }
 .scr-tools { position: absolute; top: 24px; right: 28px; z-index: 5; display: flex; gap: 6px; }
 .scr-tools button { height: 24px; padding: 0 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--fg-2); font-size: 11.5px; cursor: pointer; opacity: 0.85; }
 .scr-tools button:hover { opacity: 1; color: var(--fg); }
 .scr-tools button[hidden] { display: none; }
+.screen.term .scr-tools { top: auto; right: 14px; bottom: 12px; }
 
+/* The terminal is the screen itself: no monitor housing, bezel or curved glass. */
 .crt {
   --ph: #3dff7f;
   --ph-dim: rgba(61, 255, 127, 0.5);
@@ -756,10 +759,6 @@ body.split .screen { right: var(--fw); }
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 18px 18px 10px;
-  border-radius: 22px;
-  background: linear-gradient(#3a3a34, #22221e);
-  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.09), inset 0 -2px 0 rgba(0, 0, 0, 0.4);
 }
 .crt.amber { --ph: #ffb52e; --ph-dim: rgba(255, 181, 46, 0.5); --ph-bg: #130b01; }
 .crt-glass {
@@ -769,24 +768,20 @@ body.split .screen { right: var(--fw); }
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-radius: 28px / 22px;
-  background: radial-gradient(ellipse at 50% 42%, color-mix(in srgb, var(--ph) 9%, var(--ph-bg)) 0%, var(--ph-bg) 62%, #000 100%);
+  background: var(--ph-bg);
   color: var(--ph);
   font: 13.5px/1.42 "IBM Plex Mono", "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   text-shadow: 0 0 1px var(--ph), 0 0 7px var(--ph-dim);
-  box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.85), inset 0 0 16px rgba(0, 0, 0, 0.9);
   animation: crt-flicker 7s infinite;
 }
 /* Scanlines */
 .crt-glass::before { content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; background: repeating-linear-gradient(rgba(0, 0, 0, 0.3) 0 1px, transparent 1px 3px); }
-/* Glare and the curved-glass vignette */
-.crt-glass::after { content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none; border-radius: inherit; background: radial-gradient(ellipse at 30% 18%, rgba(255, 255, 255, 0.07), transparent 42%), radial-gradient(ellipse at center, transparent 58%, rgba(0, 0, 0, 0.6) 100%); }
 .crt-glass.on { animation: crt-on 0.45s ease-out, crt-flicker 7s infinite; }
-.crt-bar { flex: none; display: flex; align-items: baseline; gap: 12px; min-width: 0; padding: 12px 22px 6px; font-size: 12px; letter-spacing: 0.08em; }
+.crt-bar { flex: none; display: flex; align-items: baseline; gap: 12px; min-width: 0; padding: 10px 18px 6px; font-size: 12px; letter-spacing: 0.08em; }
 .crt-prog { flex: none; padding: 0 6px; background: var(--ph); color: var(--ph-bg); text-shadow: none; text-transform: uppercase; box-shadow: 0 0 10px var(--ph-dim); }
 .crt-cwd { flex: 1; min-width: 0; overflow: hidden; opacity: 0.75; text-overflow: ellipsis; white-space: nowrap; }
 .crt-stat { flex: none; text-transform: uppercase; }
-.crt-body { flex: 1; min-height: 0; overflow: hidden auto; padding: 4px 22px 22px; scrollbar-width: none; }
+.crt-body { flex: 1; min-height: 0; overflow: hidden auto; padding: 4px 18px 44px; scrollbar-width: none; }
 .crt-body::-webkit-scrollbar { display: none; }
 .crt-rem, .crt-more { opacity: 0.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .crt-more[hidden] { display: none; }
@@ -799,9 +794,6 @@ body.split .screen { right: var(--fw); }
 .crt-exit.bad { display: inline-block; padding: 0 6px; background: var(--ph); color: var(--ph-bg); text-shadow: none; }
 .crt-cur { display: inline-block; width: 0.62em; height: 1.18em; margin-left: 1px; vertical-align: text-bottom; background: var(--ph); box-shadow: 0 0 8px var(--ph-dim); animation: crt-blink 1.06s steps(2, start) infinite; }
 .crt-cur[hidden] { display: none; }
-.crt-plate { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 9px 8px 0; color: #9b9a8e; font: 600 9px/1 var(--sans); letter-spacing: 0.24em; }
-.crt-plate i { width: 7px; height: 7px; border-radius: 50%; background: #5ae07e; box-shadow: 0 0 6px #5ae07e; }
-.crt.amber .crt-plate i { background: #ffb52e; box-shadow: 0 0 6px #ffb52e; }
 @keyframes crt-blink { to { visibility: hidden; } }
 @keyframes crt-flicker { 0%, 100% { opacity: 1; } 46% { opacity: 0.99; } 47% { opacity: 0.955; } 48% { opacity: 0.99; } }
 @keyframes crt-on { 0% { transform: scale(1, 0.006); filter: brightness(3); } 55% { transform: scale(1, 1); filter: brightness(1.5); } 100% { filter: none; } }

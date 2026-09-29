@@ -1836,7 +1836,7 @@
         '<div class="crt-line" data-k="wait" hidden><span class="crt-cur"></span></div>' +
         '<div class="crt-more" data-k="more" hidden></div><pre class="crt-out" data-k="out"></pre><pre class="crt-out crt-err" data-k="err"></pre>' +
         '<div class="crt-exit" data-k="exit" hidden></div><div class="crt-line" data-k="next" hidden><span class="crt-ps">' + esc(promptOf(s)) + '</span><span class="crt-cur"></span></div></div>' +
-        '</div><div class="crt-plate"><span>CODE VIZ · TERMINAL</span><i></i></div></div>';
+        '</div></div>';
     } else {
       sui.host.innerHTML =
         '<div class="brw"><div class="brw-top"><span class="brw-dots" aria-hidden="true"><i></i><i></i><i></i></span>' +
@@ -1844,6 +1844,7 @@
         '<div class="brw-load" data-k="load"><i></i></div><div class="brw-page" data-k="page"></div></div>';
     }
     sui.host.dataset.id = String(s.id);
+    sui.box.classList.toggle('term', s.kind === 'terminal');
   }
   const part = (k) => sui.host.querySelector('[data-k="' + k + '"]');
 
@@ -2178,8 +2179,20 @@
   // ---------------------------------------------------------------------------
   // Server events
 
+  let serverPid = null;
   function onHello(d) {
     connected = true;
+    // A new server (restarted, or replaced by an update) numbers its screens from 1 again.
+    if (serverPid !== null && d.pid !== serverPid) {
+      scr.byId.clear();
+      scr.byTool.clear();
+      scr.last = null;
+      shown = null;
+      sui.host.textContent = '';
+      delete sui.host.dataset.id;
+      if (viewMode === 'screen') setView(split || current ? 'code' : 'feed');
+    }
+    serverPid = d.pid;
     setLive(d.live);
     setGithub(d.github);
     if (!d.github) {

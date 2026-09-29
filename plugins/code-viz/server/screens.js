@@ -33,7 +33,8 @@ function tail(text, maxLines) {
   t = redact(t.replace(/\r\n?/g, '\n').replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, ''));
   let lines = t.split('\n');
   if (lines.length && lines[lines.length - 1] === '') lines.pop();
-  const total = text.split('\n').length;
+  // Lines in the whole output (a trailing newline doesn't start another line).
+  const total = text.split('\n').length - (text.endsWith('\n') ? 1 : 0);
   if (lines.length > maxLines) lines = lines.slice(-maxLines);
   lines = lines.map((l) => (l.length > MAX_LINE ? l.slice(0, MAX_LINE) + '…' : l));
   let out = lines.join('\n');
