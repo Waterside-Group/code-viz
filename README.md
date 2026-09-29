@@ -7,6 +7,8 @@ Watch Claude work. Code Viz is a [Claude Code](https://code.claude.com) plugin t
 
 With **Follow** on (the target button in the footer), the viewer switches to the code when Claude edits a file and back to the feed when it moves on. Wide windows (1100px and up) show both side by side.
 
+A **usage** strip under the header shows the plan's 5-hour session (how much is used, when it resets, and an ETA at the current pace) and expands to token totals for each repository Claude is working in. See [Token usage](#token-usage).
+
 <!-- Screenshot placeholder: add a screenshot of the viewer (for example docs/screenshot.png) and link it here. -->
 
 ## Requirements
@@ -39,6 +41,7 @@ The first time Code Viz runs, Claude offers to run `/code-viz:setup` once. Setup
 
 1. **CLAUDE.md line** (desktop app): add a short block to your `~/.claude/CLAUDE.md` that tells Claude to open the viewer at the start of every session. See [The CLAUDE.md block](#the-claudemd-block).
 2. **GitHub**: if the GitHub CLI is installed but not signed in, offer to run `gh auth login` so line authors show GitHub profiles. You finish the sign-in in your browser. Skipping it is fine.
+3. **Plan usage** (terminal sessions): point Claude Code's status line at a small forwarder, so the usage strip can show the real percent of your 5-hour limit. See [Plan usage from the status line](#plan-usage-from-the-status-line).
 
 You can run `/code-viz:setup` again at any time.
 
@@ -61,7 +64,8 @@ code-viz open         open the viewer in your default browser
 code-viz url          start the server if needed and print the viewer URL
 code-viz demo         play the demo in any open viewer
 code-viz config       show the config file path and the effective settings
-code-viz setup ...    the steps behind /code-viz:setup (status, claude-md add, claude-md remove, done)
+code-viz usage        token usage per repo and the 5-hour session, as text
+code-viz setup ...    the steps behind /code-viz:setup (status, claude-md add|remove, statusline add|remove, done)
 code-viz live on|off [--project <dir>]
 ```
 
@@ -80,7 +84,11 @@ Settings live in `~/.claude/code-viz/config.json`. The file is optional; create 
   "follow": true,
   "wrap": true,
   "authors": true,
-  "github": true
+  "github": true,
+  "usage": true,
+  "usagePeriod": "today",
+  "sessionTokenBudget": null,
+  "burnWindowMinutes": 20
 }
 ```
 
@@ -94,10 +102,14 @@ Settings live in `~/.claude/code-viz/config.json`. The file is optional; create 
 | `wrap` | | `true` | Default for wrapping long lines. |
 | `authors` | | `true` | Default for the line-author column. |
 | `github` | `CODE_VIZ_GITHUB` (`0` or `1`) | `true` | Look up line authors on GitHub through your `gh` login. `false` keeps Code Viz off the GitHub API entirely. |
+| `usage` | | `true` | Default for the usage strip (the gauge button in the footer). Code Viz starts reading transcripts for usage only when a viewer with the strip on (or `code-viz usage`) first asks. |
+| `usagePeriod` | | `"today"` | What the per-repo totals cover: `"today"` (since local midnight) or `"window"` (the current 5-hour session). |
+| `sessionTokenBudget` | | none | Your own token budget for a 5-hour session, used for an ETA when the plan percent isn't available. Counted like the totals (cache reads excluded). |
+| `burnWindowMinutes` | | `20` | How many recent minutes the pace (tokens per minute, and percent per minute) is measured over. 5 to 120. |
 | `upstream` | `CODE_VIZ_UPSTREAM` | `https://api.anthropic.com` | Live mode only: where the proxy forwards requests. `code-viz live on` sets it for you. |
 | `eagerStreaming` | `CODE_VIZ_EAGER=0` turns it off | `true` | Live mode only. See [Live mode](#live-mode). |
 
-`speed`, `follow`, `wrap` and `authors` are defaults for the footer buttons. Once you click one, the viewer remembers your choice in that browser, and that wins over the file. Viewer settings apply when you reload the page.
+`speed`, `follow`, `wrap`, `authors` and `usage` are defaults for the footer buttons. Once you click one, the viewer remembers your choice in that browser, and that wins over the file. Viewer settings apply when you reload the page.
 
 Advanced: `CODE_VIZ_HOME` moves the state directory (default `~/.claude/code-viz`), and `CODE_VIZ_PROJECTS` points at a different transcripts folder (default `~/.claude/projects`).
 
@@ -116,6 +128,29 @@ For files in a git repository, the column next to the line numbers shows who las
 - Sign in: `gh auth login` (or `/code-viz:setup`).
 - Sign out: `gh auth logout`. Code Viz stops asking GitHub within 10 minutes (right away after `code-viz restart`). Profiles it already looked up stay in `github-cache.json`; delete that file to forget them.
 - Keep Code Viz off GitHub even while `gh` is signed in: set `"github": false`.
+
+## Token usage
+
+The usage strip sits under the header. Collapsed, it is one line: the session gauge, when the session resets, and the ETA with the current pace. Click it to expand the totals per repository. Toggle the whole strip with the gauge button in the footer, or run `code-viz usage` for the same numbers as text.
+
+**Per repository.** Claude Code writes the token usage of every reply into its session transcripts (`~/.claude/projects/`). Code Viz adds them up by repository: each session's working directory is mapped to its git repository, and git worktrees (including the ones the desktop app creates under `.claude/worktrees/`) count toward their main repository. Several repositories and several sessions at once, including subagents, all show up; a dot marks repositories with a reply in the last 5 minutes. Hover a row for its path, session count and models.
+
+- Each row shows **input**, **output**, **cache write** and **cache read** tokens, and a **total**.
+- **The total is input + output + cache writes. Cache reads are listed but not added in.** Cache reads are Claude re-reading context it already has, and in long sessions they are routinely 100 times everything else combined, so a total that included them would say little about the work done. They are still shown on every row.
+- By default the totals cover today (since local midnight); set `usagePeriod` to `"window"` for the current 5-hour session.
+- Code Viz reads the transcripts incrementally (backwards to 24 hours ago on first open, then only new bytes) and counts each reply once, even though Claude Code writes a reply's usage on several lines. From each line it takes only the usage numbers, the model, the time, the working directory and ids. It never keeps, logs or shows message content from this, and the numbers stay on your machine.
+- The counts are Claude Code on this machine only. Usage from claude.ai, the Claude apps and other computers isn't in them.
+
+**The 5-hour session.** Plan limits (the 5-hour session and the weekly limit) are not in transcripts or in hook input. Claude Code shares them in one place: the JSON it passes to a status line command (`rate_limits.five_hour` and `rate_limits.seven_day`, each with `used_percentage` and `resets_at`), for Pro and Max subscribers, after the first reply of a session. So there are two cases:
+
+- **With the status line forwarder** (see below), the strip shows the real numbers: "Session 43% used · resets 12:03 PM · week 61%". The ETA is how fast that percentage has risen over the last `burnWindowMinutes`, projected to 100%, and it says "Lasts until reset" when that would come after the reset time. Plan usage is shared across your devices and Claude apps, so this is the true figure, and one terminal session with the forwarder keeps it current for every viewer.
+- **Without it** (for example in the desktop app only), Code Viz does not invent a limit. It shows the tokens used in the current session and when that session most likely resets, estimated from this machine's activity: a session starts with the first reply after the previous one ended, rounded down to the hour, and lasts 5 hours (the rounding is an approximation). The pace is shown in tokens per minute. For an ETA, set `sessionTokenBudget` to a number of your own; the strip then shows how much of that budget is used and when it would run out at the current pace, clearly labelled as an estimate against your number.
+
+### Plan usage from the status line
+
+`/code-viz:setup` (step 3) or `code-viz setup statusline add` sets Claude Code's `statusLine` in `~/.claude/settings.json` to `~/.claude/code-viz/statusline.sh`, after saving a backup to `~/.claude/code-viz/backups/`. On every status line update the forwarder sends the status line data to the local Code Viz server, which keeps only the `rate_limits` numbers, and prints a short line such as `5h 43% · resets 12:03 PM · 7d 61%`. If you already had a status line command, the forwarder runs it instead and prints its output, so your status line looks the same. `code-viz setup statusline remove` restores exactly what was there before.
+
+Status line commands are a terminal feature, so this feeds the numbers only while you use Claude Code in a terminal. The desktop app has its own usage ring next to the model picker.
 
 ## The CLAUDE.md block
 
@@ -165,9 +200,9 @@ What to know before turning it on:
 
 The hooks forward each event to the server with `curl` and always exit successfully without printing anything, so they can't block or slow a tool call or add to Claude's context. The server (plain Node.js, no dependencies) merges the three sources into one feed and pushes it to the viewer over Server-Sent Events. If the server isn't running, the next hook starts it. A session that started with an older copy of the plugin never replaces a newer server.
 
-**What stays local, and what doesn't.** The server listens on `127.0.0.1` only and rejects requests with a foreign `Host` or `Origin`, so web pages can't read it. It only serves files Claude has touched in a session. It reads your session transcripts and the files Claude edits. Network requests: the viewer loads highlight.js from cdnjs for syntax highlighting, avatars load from GitHub, the GitHub lookups above run through `gh` when signed in, and live mode forwards API traffic as described. Nothing else leaves your machine.
+**What stays local, and what doesn't.** The server listens on `127.0.0.1` only and rejects requests with a foreign `Host` or `Origin`, so web pages can't read it. It only serves files Claude has touched in a session. It reads your session transcripts and the files Claude edits. The usage strip reads only usage numbers from the transcripts (see [Token usage](#token-usage)). Network requests: the viewer loads highlight.js from cdnjs for syntax highlighting, avatars load from GitHub, the GitHub lookups above run through `gh` when signed in, and live mode forwards API traffic as described. Nothing else leaves your machine.
 
-State lives in `~/.claude/code-viz/`: `config.json`, `server.log`, `server.pid`, `claude-lines.json` (lines Claude wrote, so uncommitted lines are credited correctly), `github-cache.json`, `backups/`, and `setup-offered` (so setup is offered only once).
+State lives in `~/.claude/code-viz/`: `config.json`, `server.log`, `server.pid`, `claude-lines.json` (lines Claude wrote, so uncommitted lines are credited correctly), `github-cache.json`, `backups/`, `setup-offered` (so setup is offered only once), and, if you set the status line forwarder, `statusline.sh` and `statusline-previous.*` (your previous status line, for restoring it). Token usage and plan usage are kept in memory only.
 
 ### Layout
 
@@ -176,7 +211,7 @@ State lives in `~/.claude/code-viz/`: `config.json`, `server.log`, `server.pid`,
 plugins/code-viz/
   .claude-plugin/plugin.json
   hooks/hooks.json                SessionStart, UserPromptSubmit, Pre/PostToolUse (every tool), failures, Stop
-  scripts/                        hook.sh (curl forwarder), ensure-server.sh, session-start.sh, common.sh
+  scripts/                        hook.sh (curl forwarder), ensure-server.sh, session-start.sh, common.sh, statusline.sh
   commands/code-viz.md            /code-viz:code-viz
   commands/setup.md               /code-viz:setup
   bin/code-viz                    CLI (on PATH in Claude Code sessions)
@@ -186,6 +221,7 @@ plugins/code-viz/
   server/activity.js              the activity feed: tool classification, merging hooks, transcripts and proxy
   server/transcripts.js           follows session transcripts (hook paths, a folder watch, a startup scan)
   server/blame.js                 line authors: git blame, plus GitHub identities via gh
+  server/usage.js                 token usage per repo from transcripts, and the 5-hour session
   server/partial-json.js          incremental parser for streamed tool input
   server/demo.js                  the demo
   server/viewer/                  the viewer (index.html, app.js, style.css, diff.js)
@@ -198,6 +234,8 @@ plugins/code-viz/
 - **The desktop app doesn't open the viewer.** Check that `autoOpen` isn't off (`code-viz config`). You can always run `/code-viz:code-viz`.
 - **Line authors show git names, not GitHub profiles.** Run `gh auth status`. Signing in is optional; see [Line authors](#line-authors). Profiles only appear for commits pushed to a github.com repository.
 - **No syntax highlighting.** highlight.js loads from cdnjs; without network the code shows as plain text.
+- **The usage strip says the plan percent isn't available.** Claude Code only passes plan usage to status line commands, in terminal sessions, for Pro and Max subscribers. Set the forwarder (`code-viz setup statusline add`), then send a message in a terminal session. Until then, token totals and the estimated session still work.
+- **Usage totals look lower than expected.** They count only Claude Code on this machine, and the total leaves out cache reads (shown separately on each row).
 - **Claude Code can't reach the API after disabling the plugin.** Live mode is still on: run `code-viz live off`, or remove `ANTHROPIC_BASE_URL` from the `env` block of `~/.claude/settings.json`.
 
 ## Limits
@@ -221,15 +259,16 @@ Then start a new session. The new version replaces the running server on the nex
 
 1. If you turned on live mode, run `code-viz live off` first. Otherwise Claude Code keeps sending API requests to a proxy that is no longer there.
 2. If you added the CLAUDE.md block, run `/code-viz:setup remove`.
-3. Run `code-viz stop`.
-4. Remove the plugin and the marketplace:
+3. If you set the status line forwarder, run `code-viz setup statusline remove`.
+4. Run `code-viz stop`.
+5. Remove the plugin and the marketplace:
 
    ```bash
    claude plugin uninstall code-viz@code-viz
    claude plugin marketplace remove code-viz
    ```
 
-5. Optionally delete `~/.claude/code-viz/` (settings, logs, caches and backups).
+6. Optionally delete `~/.claude/code-viz/` (settings, logs, caches and backups).
 
 ## License
 

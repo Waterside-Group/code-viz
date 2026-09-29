@@ -20,8 +20,9 @@ const DROP_MS = 90 * 60e3;
 const CHUNK = 4 * 1024 * 1024;
 
 class Transcripts {
-  constructor({ onEntry, log }) {
+  constructor({ onEntry, onFile, log }) {
     this.onEntry = onEntry;
+    this.onFile = onFile || null;
     this.log = log || (() => {});
     this.tails = new Map();
     this.watcher = null;
@@ -33,6 +34,7 @@ class Transcripts {
       this.watcher = fs.watch(ROOT, { recursive: true, persistent: false }, (ev, name) => {
         if (!name || !String(name).endsWith('.jsonl')) return;
         const file = path.join(ROOT, String(name));
+        if (this.onFile) this.onFile(file);
         const t = this.tails.get(file);
         if (t) this.read(t);
         else this.follow(file, { recentOnly: true });

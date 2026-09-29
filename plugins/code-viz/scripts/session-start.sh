@@ -20,7 +20,7 @@ if [ "$CLAUDE_CODE_ENTRYPOINT" = "claude-desktop" ] && cv_auto_open \
 fi
 if [ ! -e "$CV_HOME/setup-offered" ] && mkdir -p "$CV_HOME" 2>/dev/null \
     && date -u '+%Y-%m-%dT%H:%M:%SZ' >"$CV_HOME/setup-offered" 2>/dev/null; then
-  CONTEXT="$CONTEXT${CONTEXT:+ }Code Viz was just installed and this is its first session. Once, at the end of your reply to the user's first prompt, add one short sentence offering to run /code-viz:setup, which can add a line to their CLAUDE.md that opens the viewer and can connect GitHub so line authors show GitHub names and avatars. Only run it if the user says yes, and don't repeat the offer later."
+  CONTEXT="$CONTEXT${CONTEXT:+ }Code Viz was just installed and this is its first session. Once, at the end of your reply to the user's first prompt, add one short sentence offering to run /code-viz:setup, which can add a line to their CLAUDE.md that opens the viewer, connect GitHub so line authors show GitHub names and avatars, and show plan usage in the viewer's usage strip. Only run it if the user says yes, and don't repeat the offer later."
 fi
 if [ -n "$CONTEXT" ]; then
   printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$CONTEXT"

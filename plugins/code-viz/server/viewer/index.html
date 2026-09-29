@@ -32,6 +32,18 @@
   <div class="pchips" id="pchips" aria-label="Who wrote this file"></div>
   <span class="psrc" id="psrc"></span>
 </div>
+<section class="usage" id="usage" hidden aria-label="Token usage">
+  <button class="usum" id="usum" type="button" aria-expanded="false" aria-controls="udetail" title="Token usage: show per-repo totals">
+    <span class="ug unknown" id="ug" aria-hidden="true"><i id="ugfill"></i></span>
+    <span class="ut" id="ut">Counting tokens</span>
+    <span class="ue" id="ue"></span>
+    <svg class="uchev" viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5"/></svg>
+  </button>
+  <div class="udetail" id="udetail" hidden>
+    <div class="urows" id="urows"></div>
+    <p class="unote" id="unote"></p>
+  </div>
+</section>
 <main class="stage">
   <div class="code" id="code" tabindex="0" aria-label="File contents"><div class="rows" id="rows"></div></div>
   <div class="marks" id="marks" aria-hidden="true"></div>
@@ -72,6 +84,9 @@
   <div class="seg" id="speed" role="group" aria-label="Animation speed">
     <button type="button" data-v="0.5">½×</button><button type="button" data-v="1">1×</button><button type="button" data-v="2">2×</button><button type="button" data-v="4">4×</button>
   </div>
+  <button class="icon toggle" id="usage-btn" type="button" title="Show token usage" aria-label="Show token usage">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.3 11.8a5.7 5.7 0 1 1 11.4 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M8 11.8 10.9 7.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.8" r="1.1" fill="currentColor"/></svg>
+  </button>
   <button class="icon toggle" id="authors" type="button" title="Show who wrote each line" aria-label="Show who wrote each line">
     <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="5.2" r="2.4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M1.8 13.2c.6-2.3 2.2-3.5 4.2-3.5s3.6 1.2 4.2 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M10.6 3.3a2.3 2.3 0 0 1 0 4.2M12.2 9.9c1 .6 1.7 1.7 2 3.3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
   </button>

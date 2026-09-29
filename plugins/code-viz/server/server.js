@@ -22,6 +22,7 @@ const runDemo = require('./demo');
 const { Blamer } = require('./blame');
 const { Activity, classify } = require('./activity');
 const { Transcripts } = require('./transcripts');
+const { Usage } = require('./usage');
 const settings = require('./config');
 
 const VERSION = require('../.claude-plugin/plugin.json').version;
@@ -78,7 +79,8 @@ setInterval(() => {
 }, 15000).unref();
 
 const activity = new Activity({ broadcast, log });
-const transcripts = new Transcripts({ onEntry: (entry, ctx) => activity.fromTranscript(entry, ctx), log });
+const usage = new Usage({ log, settings, onChange: () => { if (usage.started) broadcast('usage', usage.snapshot()); } });
+const transcripts = new Transcripts({ onEntry: (entry, ctx) => activity.fromTranscript(entry, ctx), onFile: (file) => usage.touch(file), log });
 
 // ---------------------------------------------------------------------------
 // Files, projects, history
@@ -161,7 +163,10 @@ function handleHook(p, entry) {
   if (p.cwd) projects.add(p.cwd);
   // Read whatever the transcript has flushed so far first, so a thinking block written
   // before this tool call is in the feed ahead of it.
-  if (typeof p.transcript_path === 'string') transcripts.follow(p.transcript_path);
+  if (typeof p.transcript_path === 'string') {
+    transcripts.follow(p.transcript_path);
+    usage.touch(p.transcript_path);
+  }
   try { activity.fromHook(p, entry); } catch (e) { log('activity hook error', e.stack); }
   if (event === 'SessionStart') {
     broadcast('session', { session: p.session_id, cwd: p.cwd, source: p.source });
@@ -642,6 +647,10 @@ function local(req, res, pathname, url) {
       return res.end(`window.CODE_VIZ_CONFIG = ${JSON.stringify(settings.viewerOptions())};\n`);
     }
     if (pathname === '/__cv/events') return openEvents(req, res);
+    if (pathname === '/__cv/usage') {
+      usage.ensure();
+      return json(res, 200, usage.snapshot());
+    }
     if (pathname === '/__cv/health') {
       return json(res, 200, { name: 'code-viz', version: VERSION, pid: process.pid, port: PORT, upstream: UPSTREAM.origin, live: liveInfo(), github: blamer.githubStatus(), viewers: clients.size });
     }
@@ -683,6 +692,17 @@ function local(req, res, pathname, url) {
         try { payload = JSON.parse(body); } catch { return json(res, 400, { error: 'bad json' }); }
         try { handleHook(payload, String(req.headers['x-code-viz-entry'] || '')); } catch (e) { log('hook error', e.stack); }
         json(res, 200, { ok: true });
+      });
+    }
+    if (pathname === '/__cv/statusline') {
+      // From the optional status line forwarder: only the plan usage numbers are kept.
+      return readBody(req, (err, body) => {
+        let line = '';
+        if (!err) {
+          try { line = usage.statusline(JSON.parse(body)); } catch {}
+        }
+        res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(line);
       });
     }
     if (pathname === '/__cv/demo') {

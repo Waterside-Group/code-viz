@@ -20,8 +20,13 @@ const DEFAULTS = {
   wrap: true,
   authors: true,
   github: true,
+  usage: true,
+  usagePeriod: 'today',
+  sessionTokenBudget: null,
+  burnWindowMinutes: 20,
 };
 const THEMES = new Set(['auto', 'light', 'dark']);
+const PERIODS = new Set(['today', 'window']);
 const SPEEDS = new Set([0.5, 1, 2, 4]);
 
 // The config file as written, or {} when it is missing or empty. Invalid JSON throws.
@@ -65,14 +70,22 @@ function load() {
     wrap: pick(bool(file.wrap), DEFAULTS.wrap),
     authors: pick(bool(file.authors), DEFAULTS.authors),
     github: pick(bool(env.CODE_VIZ_GITHUB), bool(file.github), DEFAULTS.github),
+    usage: pick(bool(file.usage), DEFAULTS.usage),
+    usagePeriod: PERIODS.has(file.usagePeriod) ? file.usagePeriod : DEFAULTS.usagePeriod,
+    sessionTokenBudget: positive(file.sessionTokenBudget, DEFAULTS.sessionTokenBudget),
+    burnWindowMinutes: Math.min(120, Math.max(5, positive(file.burnWindowMinutes, DEFAULTS.burnWindowMinutes))),
     error,
   };
+}
+function positive(v, fallback) {
+  const n = Number(v);
+  return v != null && v !== '' && Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 // The options the viewer applies at page load (as defaults for its footer toggles).
 function viewerOptions(cfg) {
   const c = cfg || load();
-  return { theme: c.theme, speed: c.speed, follow: c.follow, wrap: c.wrap, authors: c.authors };
+  return { theme: c.theme, speed: c.speed, follow: c.follow, wrap: c.wrap, authors: c.authors, usage: c.usage };
 }
 
 module.exports = { HOME, FILE, DEFAULTS, readFile, load, viewerOptions };

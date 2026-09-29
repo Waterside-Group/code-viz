@@ -8,6 +8,7 @@
 //   code-viz url                    start the server if needed and print the viewer URL
 //   code-viz demo                   play the demo in any open viewer
 //   code-viz config                 show the config file path and the effective settings
+//   code-viz usage                  token usage per repo and the 5-hour session window
 //   code-viz setup ...              first-run setup (see setup() below and /code-viz:setup)
 //   code-viz live on  [--project <dir>]
 //   code-viz live off [--project <dir>]
@@ -232,6 +233,8 @@ function showConfig() {
 //   code-viz setup status             what setup would do: the CLAUDE.md block and GitHub status
 //   code-viz setup claude-md add      add (or update) the Code Viz block in the user's CLAUDE.md
 //   code-viz setup claude-md remove   remove that block
+//   code-viz setup statusline add     point Claude Code's status line at the usage forwarder
+//   code-viz setup statusline remove  put the previous status line back
 //   code-viz setup done               record that setup was offered, so it is not offered again
 
 const CLAUDE_MD = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'CLAUDE.md');
@@ -299,6 +302,8 @@ async function setup(args) {
     if (!settings.load().github) console.log('GitHub lookups are turned off in the config ("github": false).');
     console.log(`Session:    ${process.env.CLAUDE_CODE_ENTRYPOINT === 'claude-desktop' ? 'Claude desktop app' : 'not the Claude desktop app (the CLAUDE.md block only has an effect in the desktop app)'}`);
     console.log(`Auto-open:  ${settings.load().autoOpen ? 'on (the SessionStart hook already asks Claude to open the viewer in the desktop app)' : 'off'}`);
+    const sl = statusLineState();
+    console.log(`Status line: ${sl.error ? `could not read ${CLAUDE_SETTINGS}: ${sl.error}` : sl.state === 'none' ? 'not set (the Code Viz forwarder can be added for plan usage)' : sl.state === 'ours' ? `Code Viz forwarder${sl.wraps ? ', running your previous status line' : ''}` : 'your own command (the Code Viz forwarder can wrap it and keep its output)'}`);
     return;
   }
   if (step === 'claude-md' && (action === 'add' || action === 'remove')) {
@@ -327,12 +332,107 @@ async function setup(args) {
     if (saved) console.log(`Backup of the previous file: ${saved}`);
     return;
   }
+  if (step === 'statusline' && action === 'add') return statusLineAdd();
+  if (step === 'statusline' && action === 'remove') return statusLineRemove();
   if (step === 'done') {
     fs.mkdirSync(HOME, { recursive: true });
     fs.writeFileSync(OFFERED, new Date().toISOString() + '\n');
     return console.log('Setup marked as done; Code Viz will not offer it again.');
   }
-  throw new Error('usage: code-viz setup status | claude-md add | claude-md remove | done');
+  throw new Error('usage: code-viz setup status | claude-md add | claude-md remove | statusline add | statusline remove | done');
+}
+
+// ---------------------------------------------------------------------------
+// Usage: the same numbers as the viewer's usage panel, as text.
+
+const fmtTokens = (n) => (n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n));
+const fmtClock = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+async function showUsage() {
+  await start({ quiet: true });
+  let u = null;
+  for (let i = 0; i < 60; i++) {
+    const r = await request('GET', '/__cv/usage', 5000);
+    try { u = JSON.parse(r.body); } catch { u = null; }
+    if (u && !u.scanning && (i > 0 || u.repos.length)) break;
+    await sleep(500);
+  }
+  if (!u) throw new Error('could not read usage from the server');
+  const s = u.session;
+  if (s.source === 'statusline') {
+    let line = `Session:  ${s.usedPercent.toFixed(1)}% of the 5-hour limit used, resets ${fmtClock(s.resetsAt)} (from the status line, as of ${fmtClock(s.asOf)})`;
+    if (s.weekPercent != null) line += `; week ${s.weekPercent.toFixed(1)}%, resets ${new Date(s.weekResetsAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`;
+    console.log(line);
+  } else if (s.source === 'estimate') {
+    console.log(`Session:  ${fmtTokens(s.tokens)} tokens in the 5-hour window, started about ${fmtClock(s.start)}, resets about ${fmtClock(s.resetsAt)} (estimated from this machine's activity; plan percent not available)`);
+  } else {
+    console.log('Session:  no active 5-hour window (no Claude Code replies in the last 5 hours)');
+  }
+  if (s.budget) console.log(`Budget:   ${fmtTokens(s.tokens)} of your ${fmtTokens(s.budget)} token budget (${Math.round(s.budgetPercent)}%)`);
+  const e = s.eta;
+  if (e) console.log(`ETA:      ${e.reached ? 'limit reached' : e.pending ? 'measuring (needs a few minutes of status line updates)' : e.at ? `100% by about ${fmtClock(e.at)} at the current pace (${e.basis === 'budget' ? 'against your budget' : 'from the plan percentage'})` : "won't run out before the reset at the current pace"}`);
+  console.log(`Pace:     ${fmtTokens(u.burn.tokensPerMinute)} tokens/min over the last ${u.burn.minutes} min`);
+  console.log(`Repos (${u.period.kind === 'window' ? 'this 5-hour window' : 'today'}; total = ${u.totals}):`);
+  if (!u.repos.length) console.log('  none yet');
+  for (const r of u.repos) {
+    console.log(`  ${r.active ? '*' : ' '} ${r.name.padEnd(24)} ${fmtTokens(r.total).padStart(7)}   in ${fmtTokens(r.in)}  out ${fmtTokens(r.out)}  cache write ${fmtTokens(r.cacheWrite)}  cache read ${fmtTokens(r.cacheRead)}   ${r.sessions} session${r.sessions === 1 ? '' : 's'}, ${r.path}`);
+  }
+  console.log(`  ${' '.repeat(26)}${fmtTokens(u.all.total).padStart(7)}   all repos (${fmtTokens(u.all.cacheRead)} cache reads not included)`);
+}
+
+// ---------------------------------------------------------------------------
+// The optional status line forwarder (plan usage comes only through status line commands).
+
+// Claude Code's user settings (CLAUDE_CONFIG_DIR moves them, as it does CLAUDE.md).
+const CLAUDE_SETTINGS = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json');
+const STATUSLINE = path.join(HOME, 'statusline.sh');
+const STATUSLINE_PREV = path.join(HOME, 'statusline-previous.json');
+const STATUSLINE_NEXT = path.join(HOME, 'statusline-previous.sh');
+const isOurStatusLine = (v) => !!(v && typeof v === 'object' && typeof v.command === 'string' && (v.command.includes(STATUSLINE) || v.command.includes('code-viz/statusline.sh')));
+
+function statusLineState() {
+  let settingsValue;
+  try { settingsValue = readJSON(CLAUDE_SETTINGS, {}).statusLine; } catch (e) { return { error: e.message }; }
+  if (!settingsValue) return { state: 'none' };
+  if (isOurStatusLine(settingsValue)) return { state: 'ours', wraps: fs.existsSync(STATUSLINE_NEXT) };
+  return { state: 'other', type: settingsValue.type };
+}
+
+function statusLineAdd() {
+  const settingsValue = readJSON(CLAUDE_SETTINGS, {});
+  const prev = settingsValue.statusLine;
+  fs.mkdirSync(HOME, { recursive: true });
+  fs.copyFileSync(path.join(ROOT, 'scripts', 'statusline.sh'), STATUSLINE);
+  fs.chmodSync(STATUSLINE, 0o755);
+  if (isOurStatusLine(prev)) return console.log(`The Code Viz status line is already set in ${CLAUDE_SETTINGS}; refreshed ${STATUSLINE}.`);
+  if (prev && prev.type === 'command' && typeof prev.command === 'string') {
+    writeJSON(STATUSLINE_PREV, prev);
+    fs.writeFileSync(STATUSLINE_NEXT, prev.command + '\n');
+  } else if (prev) {
+    throw new Error(`${CLAUDE_SETTINGS} has a statusLine that is not a command; leaving it alone.`);
+  } else {
+    for (const f of [STATUSLINE_PREV, STATUSLINE_NEXT]) try { fs.unlinkSync(f); } catch {}
+  }
+  const saved = backup(CLAUDE_SETTINGS);
+  const { command, ...rest } = prev || {};
+  settingsValue.statusLine = { ...rest, type: 'command', command: JSON.stringify(STATUSLINE) };
+  writeJSON(CLAUDE_SETTINGS, settingsValue);
+  console.log(`Status line set to the Code Viz forwarder in ${CLAUDE_SETTINGS}${prev ? ' (it runs your previous status line command and prints its output)' : ''}.`);
+  if (saved) console.log(`Backup of the previous file: ${saved}`);
+  console.log('Takes effect in terminal sessions; Claude Code sends plan usage after the first reply.');
+}
+
+function statusLineRemove() {
+  const settingsValue = readJSON(CLAUDE_SETTINGS, {});
+  if (!isOurStatusLine(settingsValue.statusLine)) return console.log(`The Code Viz status line is not set in ${CLAUDE_SETTINGS}. Nothing changed.`);
+  const prev = fs.existsSync(STATUSLINE_PREV) ? readJSON(STATUSLINE_PREV, null) : null;
+  const saved = backup(CLAUDE_SETTINGS);
+  if (prev) settingsValue.statusLine = prev;
+  else delete settingsValue.statusLine;
+  writeJSON(CLAUDE_SETTINGS, settingsValue);
+  for (const f of [STATUSLINE_PREV, STATUSLINE_NEXT]) try { fs.unlinkSync(f); } catch {}
+  console.log(`${prev ? 'Restored your previous status line' : 'Removed the Code Viz status line'} in ${CLAUDE_SETTINGS}.`);
+  if (saved) console.log(`Backup of the previous file: ${saved}`);
 }
 
 async function main() {
@@ -357,6 +457,8 @@ async function main() {
       return console.log(VIEWER_URL);
     case 'config':
       return showConfig();
+    case 'usage':
+      return showUsage();
     case 'setup':
       return setup(args);
     case 'demo':
@@ -368,7 +470,7 @@ async function main() {
       if (args[0] === 'off') return liveOff(args.slice(1));
       throw new Error('usage: code-viz live on|off [--project <dir>]');
     default:
-      throw new Error(`unknown command "${cmd}". Commands: status, start, stop, restart, open, url, demo, config, setup, live on|off`);
+      throw new Error(`unknown command "${cmd}". Commands: status, start, stop, restart, open, url, demo, config, usage, setup, live on|off`);
   }
 }
 

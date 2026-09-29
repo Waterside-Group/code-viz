@@ -1775,6 +1775,110 @@
   splitMq.addEventListener('change', applySplit);
 
   // ---------------------------------------------------------------------------
+  // Token usage: the session gauge, and per-repo totals (aggregated by the server from the
+  // usage numbers in session transcripts; see server/usage.js)
+
+  const uui = { box: $('usage'), sum: $('usum'), gauge: $('ug'), fill: $('ugfill'), text: $('ut'), eta: $('ue'), detail: $('udetail'), rows: $('urows'), note: $('unote'), btn: $('usage-btn') };
+  let usageOn = prefs.get('usage', CFG.usage !== false);
+  let usageOpen = prefs.get('usageOpen', false);
+  let usageData = null;
+  const tok = (n) => (n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'K' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n || 0));
+  const hm = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+  function etaText(s, burn) {
+    const e = s.eta;
+    const pace = tok(burn.tokensPerMinute) + '/min';
+    if (!e) return pace;
+    const budget = e.basis === 'budget';
+    if (e.reached) return budget ? 'Budget used up' : 'Limit reached';
+    if (e.pending) return 'ETA measuring · ' + pace;
+    if (e.at) return (budget ? 'Budget out ~' : '100% ~') + hm(e.at) + ' · ' + pace;
+    return 'Lasts until reset · ' + pace;
+  }
+
+  function renderUsage() {
+    uui.box.hidden = !usageOn;
+    uui.btn.classList.toggle('on', usageOn);
+    uui.btn.setAttribute('aria-pressed', String(usageOn));
+    if (!usageOn) return;
+    uui.sum.setAttribute('aria-expanded', String(usageOpen));
+    uui.detail.hidden = !usageOpen;
+    const u = usageData;
+    if (!u) {
+      uui.text.textContent = 'Counting tokens';
+      uui.eta.textContent = '';
+      return;
+    }
+    const s = u.session;
+    let pct = null;
+    let text;
+    if (s.source === 'statusline') {
+      pct = s.usedPercent;
+      text = 'Session ' + Math.round(pct) + '% used · resets ' + hm(s.resetsAt) + (s.weekPercent != null ? ' · week ' + Math.round(s.weekPercent) + '%' : '');
+    } else if (s.source === 'estimate') {
+      if (s.budget) pct = s.budgetPercent;
+      text = 'Session ~' + tok(s.tokens) + (s.budget ? ' of ' + tok(s.budget) + ' budget' : ' tokens') + ' · resets ~' + hm(s.resetsAt);
+    } else {
+      text = u.scanning ? 'Counting tokens' : 'No active 5-hour session';
+    }
+    uui.text.textContent = text;
+    uui.eta.textContent = s.source ? etaText(s, u.burn) : '';
+    uui.gauge.className = 'ug' + (pct == null ? ' unknown' : pct >= 90 ? ' bad' : pct >= 75 ? ' warn' : '');
+    uui.fill.style.width = pct == null ? '0' : Math.max(2, Math.min(100, pct)) + '%';
+    const where = s.source === 'statusline' ? 'Plan usage from Claude Code (status line, as of ' + hm(s.asOf) + ')' : s.source === 'estimate' ? 'Estimated from this machine: plan percent not available' : '';
+    uui.sum.title = [text, uui.eta.textContent, where].filter(Boolean).join('\n');
+    if (!usageOpen) return;
+
+    const period = u.period.kind === 'window' ? 'this 5-hour window' : 'today';
+    let html = '';
+    for (const r of u.repos) {
+      const models = r.models.map((m) => m.model.replace(/^claude-/, '') + ' ' + tok(m.total)).join(', ');
+      html +=
+        '<div class="ur" title="' + esc(r.path + (r.git ? '' : ' (not a git repository)') + '\n' + r.sessions + ' session' + (r.sessions === 1 ? '' : 's') + ', ' + r.replies + ' replies\n' + models) + '">' +
+        '<span class="ud' + (r.active ? ' on' : '') + '"></span><b>' + esc(r.name) + '</b><span class="uv">' + tok(r.total) + '</span></div>' +
+        '<div class="ub"><span>in ' + tok(r.in) + '</span><span>out ' + tok(r.out) + '</span><span>cache write ' + tok(r.cacheWrite) + '</span><span>cache read ' + tok(r.cacheRead) + '</span></div>';
+    }
+    if (!u.repos.length) html = '<div class="ur"><b>' + (u.scanning ? 'Counting tokens' : 'No Claude Code replies ' + period) + '</b></div>';
+    else if (u.repos.length > 1) html += '<div class="ur all"><span class="ud"></span><b>All repos, ' + period + '</b><span class="uv">' + tok(u.all.total) + '</span></div>';
+    uui.rows.innerHTML = html;
+    let note = 'Per repo, ' + period + '. Totals are input + output + cache writes; cache reads are listed separately because they re-read context already counted and would dwarf everything else.';
+    if (s.source === 'statusline') note += ' Session percent and reset time come from Claude Code (status line, as of ' + hm(s.asOf) + '); the ETA is the recent pace of that percentage.';
+    else {
+      note += ' Plan usage percent is not available here: Claude Code only shares it with status line commands (see the README).';
+      if (s.source === 'estimate') note += ' The window times are estimated from this machine\'s Claude Code activity; claude.ai and other devices count toward your limit too.';
+      note += s.budget ? ' The ETA is an estimate against your sessionTokenBudget of ' + tok(s.budget) + ' tokens.' : ' Set sessionTokenBudget in the config to get an ETA.';
+    }
+    uui.note.textContent = note;
+  }
+
+  function fetchUsage() {
+    fetch('/__cv/usage')
+      .then((r) => r.json())
+      .then((d) => {
+        usageData = d;
+        renderUsage();
+        // The first read of the transcripts takes a moment; ask again until it is done.
+        if (d.scanning) setTimeout(fetchUsage, 1500);
+      })
+      .catch(() => {});
+  }
+  function onUsage(d) {
+    usageData = d;
+    renderUsage();
+  }
+  uui.sum.onclick = () => {
+    usageOpen = !usageOpen;
+    prefs.set('usageOpen', usageOpen);
+    renderUsage();
+  };
+  uui.btn.onclick = () => {
+    usageOn = !usageOn;
+    prefs.set('usage', usageOn);
+    renderUsage();
+    if (usageOn) fetchUsage();
+  };
+
+  // ---------------------------------------------------------------------------
   // Server events
 
   function onHello(d) {
@@ -1801,6 +1905,8 @@
       showFile(f, true);
     }
     loadActivity(d.activity);
+    if (usageOn) fetchUsage();
+    renderUsage();
     // Open on the feed when Claude has been active lately, otherwise on the last edit.
     let recent = false;
     for (const it of feed.items.values()) if (Date.now() - it.ts < 10 * 60e3) recent = true;
@@ -1944,6 +2050,7 @@
     on('act', onAct);
     on('act-delta', onActDelta);
     on('act-state', onActState);
+    on('usage', onUsage);
     es.onerror = () => {
       connected = false;
       if (!running) setStatus('bad', 'Disconnected');
