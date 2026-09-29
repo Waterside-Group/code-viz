@@ -263,15 +263,22 @@ function readClaudeMd() {
   try { return fs.readFileSync(CLAUDE_MD, 'utf8'); } catch (e) { if (e.code === 'ENOENT') return null; throw e; }
 }
 
+// Whether the GitHub CLI is installed and signed in to github.com, and as whom. Only the
+// account name is read from `gh auth status`; its output never includes the token itself.
 function ghStatus() {
-  return new Promise((resolve) => {
-    execFile('gh', ['auth', 'status', '--hostname', 'github.com'], { timeout: 15000, env: { ...process.env, GH_PROMPT_DISABLED: '1', NO_COLOR: '1' } }, (err, stdout, stderr) => {
-      if (err && err.code === 'ENOENT') return resolve({ installed: false, signedIn: false });
-      const out = `${stdout || ''}\n${stderr || ''}`;
-      const m = /Logged in to github\.com (?:account|as) ([A-Za-z0-9-]+)/.exec(out);
-      resolve({ installed: true, signedIn: !err, login: m ? m[1] : null });
+  const env = { ...process.env, GH_PROMPT_DISABLED: '1', NO_COLOR: '1' };
+  const check = (args) =>
+    new Promise((resolve) => {
+      execFile('gh', args, { timeout: 15000, env }, (err, stdout, stderr) => resolve({ err, out: `${stdout || ''}\n${stderr || ''}` }));
     });
-  });
+  return (async () => {
+    // --active (gh 2.40+) checks only the account gh uses, so a stale second login doesn't count.
+    let r = await check(['auth', 'status', '--hostname', 'github.com', '--active']);
+    if (r.err && r.err.code === 'ENOENT') return { installed: false, signedIn: false };
+    if (r.err && /unknown flag/i.test(r.out)) r = await check(['auth', 'status', '--hostname', 'github.com']);
+    const m = /Logged in to github\.com (?:account|as) ([A-Za-z0-9-]+)/.exec(r.out);
+    return { installed: true, signedIn: !r.err, login: m ? m[1] : null };
+  })();
 }
 
 async function setup(args) {
