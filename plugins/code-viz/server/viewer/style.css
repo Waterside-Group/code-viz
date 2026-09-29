@@ -749,7 +749,19 @@ body.split .screen { right: var(--fw); }
 .scr-tools button[hidden] { display: none; }
 .screen.term .scr-tools { top: auto; right: 14px; bottom: 12px; }
 
-/* The terminal is the screen itself: no monitor housing, bezel or curved glass. */
+/* Editor-style terminal: a command session drawn with the code view's own rows, gutter and
+   change colors (the .code and .row rules above). Only the placement differs. */
+.screen .code.tcode { position: absolute; inset: 0; }
+body[data-view="screen"] .screen .code.tcode { visibility: visible; }
+body.split .screen .code.tcode { right: 0; }
+.tps { color: var(--muted); user-select: none; }
+.row.meta:not(.del):not(.pend) { counter-increment: none; }
+.row.meta .ln::before { content: ""; }
+.row.meta .tx { color: var(--muted); font: 11.5px/var(--lh) var(--sans); }
+.row.meta.rc-bad .tx { color: var(--del-bar); }
+.stats .w { color: var(--mod-bar); }
+
+/* Retro terminal ("terminalStyle": "retro"): the screen itself, no monitor housing. */
 .crt {
   --ph: #3dff7f;
   --ph-dim: rgba(61, 255, 127, 0.5);

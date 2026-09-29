@@ -322,10 +322,15 @@
   // Reconcile the DOM with a new row list, touching only rows between the common prefix and
   // suffix. Newly inserted rows slide in.
   function render(rows, opts) {
+    renderInto(view, ui.rows, rows, opts);
+  }
+  // The same reconciliation for any rows container: the code view, and the editor-style
+  // terminal (which draws a command session with these very rows).
+  function renderInto(v, root, rows, opts) {
     const st = runStarts(rows);
     const keys = rows.map((r, i) => rowKey(r) + spanKey(st[i]));
-    const old = view.keys;
-    const oldEls = view.els;
+    const old = v.keys;
+    const oldEls = v.els;
     const n0 = old.length;
     const n1 = keys.length;
     let p = 0;
@@ -352,7 +357,7 @@
         els.push(e);
         added.push(e);
       }
-      ui.rows.insertBefore(frag, s ? oldEls[n0 - s] : null);
+      root.insertBefore(frag, s ? oldEls[n0 - s] : null);
       if (!(opts && opts.noEnter) && added.length <= 40 && !document.hidden) {
         for (const e of added) e.classList.add('enter');
         // Rows clip their content only while they grow in (a settled row lets an author
@@ -367,9 +372,9 @@
       }
     }
     for (let i = n0 - s; i < n0; i++) els.push(oldEls[i]);
-    view.rows = rows;
-    view.keys = keys;
-    view.els = els;
+    v.rows = rows;
+    v.keys = keys;
+    v.els = els;
   }
 
   function renderAll(rows) {
@@ -1821,13 +1826,32 @@
     ui.fpath.textContent = (s.kind === 'terminal' ? s.cwd : s.kind === 'search' ? s.query : s.url) || ' ';
     ui.fpath.title = ui.fpath.textContent;
     ui.ficon.textContent = s.kind === 'terminal' ? '>_' : 'WWW';
-    ui.stats.innerHTML = s.ended ? '<span class="n">' + esc(STATUS_WORD[s.status] || '') + (s.durationMs != null ? ' · ' + dur(s.durationMs) : '') + '</span>' : '';
+    if (editorTerm(s)) {
+      // Like a file's +adds, with stderr lines in the "modified" color.
+      const n = (x) => (x && x.text ? x.text.split('\n').length : 0);
+      ui.stats.innerHTML = !s.ended
+        ? '<span class="n"><span class="el" data-t0="' + s.ts + '">' + tick(Date.now() - s.ts) + '</span> running</span>'
+        : (n(s.output) ? '<span class="a">+' + n(s.output) + '</span>' : '') + (n(s.stderr) ? '<span class="w">+' + n(s.stderr) + '</span>' : '') + '<span class="n">' + esc(metaText(s)) + '</span>';
+    } else ui.stats.innerHTML = s.ended ? '<span class="n">' + esc(STATUS_WORD[s.status] || '') + (s.durationMs != null ? ' · ' + dur(s.durationMs) : '') + '</span>' : '';
     document.title = screenTitle(s) + ' · Code Viz';
   }
 
+  // "editor" (the default) draws a command session in the code view's own rows; "retro" is
+  // the phosphor terminal.
+  const editorTerm = (s) => s.kind === 'terminal' && CFG.terminalStyle !== 'retro';
+  const tv = { rows: [], keys: [], els: [], root: null, box: null };
+
   // Put a screen on the stage (its frame only; the play functions fill it in).
   function buildScreen(s) {
-    if (s.kind === 'terminal') {
+    sui.box.classList.toggle('ed', editorTerm(s));
+    if (editorTerm(s)) {
+      sui.host.innerHTML = '<div class="code tcode' + (wrap ? '' : ' nowrap') + '" tabindex="0" aria-label="Command and output"><div class="rows"></div></div>';
+      tv.box = sui.host.firstChild;
+      tv.root = tv.box.firstChild;
+      tv.rows = [];
+      tv.keys = [];
+      tv.els = [];
+    } else if (s.kind === 'terminal') {
       sui.host.innerHTML =
         '<div class="crt ' + (['green', 'amber', 'orange'].includes(CFG.terminalColor) ? CFG.terminalColor : 'orange') + '"><div class="crt-glass' + (reduceMotion.matches ? '' : ' on') + '">' +
         '<div class="crt-bar"><span class="crt-prog">' + esc(s.program || 'sh') + '</span><span class="crt-cwd">' + esc(s.cwd || '') + '</span><span class="crt-stat" data-k="stat"></span></div>' +
@@ -1878,6 +1902,65 @@
       if (job.skip || (queue.length && waited > 1500) || waited > 10 * 60e3) return false;
       await sleep(80);
     }
+    return true;
+  }
+
+  // Editor style, drawn like a file being written: Claude's description is a comment line,
+  // the command is typed in as an inserted line, an empty inserted line with the caret waits
+  // while it runs, stdout streams in as insertions and then settles into context with the
+  // change marker in the gutter (and the edit view's flash), stderr stays in the edit view's
+  // "modified" color, and a muted meta line gives the exit status and duration.
+  function metaText(s) {
+    const d = s.durationMs != null ? ' · ' + dur(s.durationMs) : '';
+    if (s.status === 'ok') return 'exit 0' + d;
+    if (s.status === 'error') return 'exit ' + (s.exitCode != null ? s.exitCode : '?') + d;
+    if (s.status === 'interrupted') return 'interrupted' + d;
+    if (s.status === 'denied') return 'permission denied';
+    if (s.status === 'background') return 'running in the background' + (s.backgroundTaskId ? ' (' + s.backgroundTaskId + ')' : '');
+    return '';
+  }
+  function commandRows(text, kind, caret) {
+    const lines = String(text).split('\n');
+    return lines.map((t, i) => {
+      const p = i ? '> ' : '$ ';
+      const r = { k: kind, t: p + t, h: '<span class="tps">' + p + '</span>' + hl(t, 'bash') };
+      if (caret && i === lines.length - 1) r.c = p.length + t.length;
+      if (kind === 'ctx') r.r = 'add';
+      return r;
+    });
+  }
+  async function playEditorTerm(job, s, phase) {
+    // Follow the newest line the way the code view does: nothing moves while it fits, and once
+    // it would leave the pane, scroll so it sits about 70% of the way down.
+    const draw = (rows, quiet) => {
+      renderInto(tv, tv.root, rows, { noEnter: quiet || instant(job) });
+      const last = tv.els[tv.els.length - 1];
+      const bottom = last ? last.offsetTop + last.offsetHeight : 0;
+      if (bottom > tv.box.scrollTop + tv.box.clientHeight - 8) tv.box.scrollTop = Math.max(0, bottom - tv.box.clientHeight * 0.7);
+    };
+    const pre = s.description ? [{ k: 'ctx', t: '# ' + s.description, h: hl('# ' + s.description, 'bash') }] : [];
+    const cmd = s.command || '';
+    if (phase === 'type' && !instant(job) && cmd) {
+      await stepper(job, cmd.length, Math.max(38, cmd.length / 1.6), (n) => draw(pre.concat(commandRows(cmd.slice(0, n), 'add', true))));
+    }
+    const head = pre.concat(commandRows(cmd, 'ctx', false));
+    if (!s.ended) {
+      draw(head.concat([{ k: 'add', t: '', h: '', c: 0 }]), phase !== 'type');
+      updateHeader();
+      if (!(await waitEnded(job, s))) return false;
+    }
+    updateHeader();
+    const out = s.output && s.output.text ? s.output.text.split('\n') : [];
+    const err = s.stderr && s.stderr.text ? s.stderr.text.split('\n') : [];
+    const more = s.output && s.output.dropped ? [{ k: 'meta', t: s.output.dropped + ' earlier lines', h: esc('... ' + s.output.dropped.toLocaleString() + ' earlier line' + (s.output.dropped === 1 ? '' : 's') + ' not shown') }] : [];
+    const added = out.map((t) => ({ k: 'add', t, h: esc(t) })).concat(err.map((t) => ({ k: 'mod', t, h: esc(t) })));
+    if (added.length && !instant(job)) {
+      await stepper(job, added.length, clamp(added.length / 1.4, 24, 600), (n) => draw(head.concat(more, added.slice(0, n))));
+    }
+    const flash = instant(job) ? 0 : 1;
+    const settled = added.map((r) => (r.k === 'add' ? { k: 'ctx', t: r.t, h: r.h, r: 'add', f: flash } : r));
+    const meta = metaText(s);
+    draw(head.concat(more, settled, meta ? [{ k: 'meta', t: meta, h: esc(meta), r: s.status === 'ok' || s.status === 'background' ? '' : 'bad' }] : []), true);
     return true;
   }
 
@@ -1976,7 +2059,7 @@
     sui.skip.hidden = viewMode !== 'screen';
     sui.replay.hidden = true;
     setStatus('live', s.kind === 'terminal' ? 'Running ' + (s.program || 'a command') : s.kind === 'search' ? 'Searching the web' : 'Fetching a page');
-    const done = s.kind === 'terminal' ? await playTerminal(job, s, phase) : await playBrowser(job, s, phase);
+    const done = editorTerm(s) ? await playEditorTerm(job, s, phase) : s.kind === 'terminal' ? await playTerminal(job, s, phase) : await playBrowser(job, s, phase);
     s._pending = false;
     s._waiting = !done;
     sui.skip.hidden = true;
@@ -2005,7 +2088,7 @@
     if (sui.host.dataset.id !== String(s.id) || !(running && running.sc === s)) {
       buildScreen(s);
       const job = { skip: true, sc: s };
-      (s.kind === 'terminal' ? playTerminal(job, s, 'show') : playBrowser(job, s, 'show')).then(() => {
+      (editorTerm(s) ? playEditorTerm(job, s, 'show') : s.kind === 'terminal' ? playTerminal(job, s, 'show') : playBrowser(job, s, 'show')).then(() => {
         sui.replay.hidden = !s.ended;
         updateHeader();
       });

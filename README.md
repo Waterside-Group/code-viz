@@ -5,7 +5,7 @@ Watch Claude work. Code Viz is a [Claude Code](https://code.claude.com) plugin t
 - **Activity**: a live feed of everything Claude does. Your prompts, each thinking block ("Thought for 8s"), Claude's replies, and every tool call as a card: shell commands and CLIs (git, npm, GitHub, curl, psql and more), MCP calls (database queries show the returned rows as a table), file reads and searches. A card shows a spinner and a running clock while its tool runs, then its duration and output, or the error. Between tool calls a "Thinking" row counts up, so you can see Claude is working before anything is written.
 - **Code**: the file Claude is editing, with every change animated. New code is typed in with a caret, removed lines turn red and fold away, small edits are backspaced and retyped in place, and changed lines keep a marker in the gutter. Next to the line numbers, a column shows who last changed each line.
 
-Tool calls get **screens** of their own: shell commands type out on a 1990 phosphor terminal and stream their output, and web searches and page fetches load in a browser window. See [Tool screens](#tool-screens).
+Tool calls get **screens** of their own: shell commands play like a file edit, the command typed in and its output streaming in as new lines (or, if you prefer, on a 1990 phosphor terminal), and web searches and page fetches load in a browser window. See [Tool screens](#tool-screens).
 
 With **Follow** on (the target button in the footer), the viewer switches to the code when Claude edits a file (or to the screen when it runs a command or searches) and back to the feed when it moves on. Wide windows (1100px and up) show both side by side.
 
@@ -110,7 +110,8 @@ Settings live in `~/.claude/code-viz/config.json`. The file is optional; create 
 | `sessionTokenBudget` | | none | Your own token budget for a 5-hour session, used for an ETA when the plan percent isn't available. Counted like the totals (cache reads excluded). |
 | `terminalScreen` | | `true` | Play shell commands (Bash and PowerShell) on the terminal screen. |
 | `browserScreen` | | `true` | Play web searches and page fetches on the browser screen. |
-| `terminalColor` | | `"orange"` | Phosphor color of the terminal: `"orange"` (Claude orange, `#D97757`), `"green"` or `"amber"`. |
+| `terminalStyle` | | `"editor"` | How commands are drawn: `"editor"`, like a file edit in the code view, or `"retro"`, the phosphor terminal. |
+| `terminalColor` | | `"orange"` | Phosphor color of the retro terminal only: `"orange"` (Claude orange, `#D97757`), `"green"` or `"amber"`. |
 | `screenLines` | | `200` | How many lines of a command's output the terminal keeps (the last ones). 10 to 2000. |
 | `burnWindowMinutes` | | `20` | How many recent minutes the pace (tokens per minute, and percent per minute) is measured over. 5 to 120. |
 | `upstream` | `CODE_VIZ_UPSTREAM` | `https://api.anthropic.com` | Live mode only: where the proxy forwards requests. `code-viz live on` sets it for you. |
@@ -140,12 +141,20 @@ For files in a git repository, the column next to the line numbers shows who las
 
 When Claude runs a command or goes to the web, the stage shows it the way you would see it:
 
-- **Terminal** (the Bash and PowerShell tools): the stage becomes a phosphor screen from around 1990, edge to edge, in Claude orange by default (or green or amber, see `terminalColor`), with scanlines, a soft flicker and glow, and a blinking block cursor. A status line at the top names the program and the working directory. Claude's description of the command appears as a comment, the command types out at the prompt, a cursor waits while it runs (with a running clock), then the output streams in below it, stderr tinted, and the exit status: `[exit 0 · 1.2s]`, `[exit 1 · 0.4s]` in inverse video, `^C [interrupted]`, or a note for commands sent to the background.
+- **Terminal** (the Bash and PowerShell tools): drawn like a file edit, with the code view's own rows, line numbers, change colors and animations, in your light or dark theme. The header shows the program and command where a file name would be (`git status`, `npm test`) and the working directory below it. The session plays like a file being written:
+  - Claude's description of the command is the first line, as a comment;
+  - the command types in as an inserted line, after a `$` prompt, with the edit caret;
+  - while it runs, an empty inserted line waits with the caret, and a clock runs in the header;
+  - stdout streams in as green insertions, then settles into normal lines that keep the change marker in the gutter, with the same brief highlight an edit gets;
+  - stderr lines keep the edit view's amber "modified" color, so warnings and errors stay visible;
+  - a muted last line gives the exit status and duration (`exit 0 · 1.2s`), in red when the command failed, was interrupted or denied. The header counts the output lines, like a file's `+adds`.
+
+  Prefer the phosphor terminal from 0.7? Set `"terminalStyle": "retro"`: a CRT-style screen from around 1990, edge to edge, with scanlines, a soft flicker and glow, and a blinking block cursor, in Claude orange by default (or green or amber, see `terminalColor`). It shows the same things: the description as a comment, the typed command, a waiting cursor, the output with stderr tinted, and `[exit 0 · 1.2s]`, `[exit 1 · 0.4s]` in inverse video, `^C [interrupted]`, or a note for commands sent to the background.
 - **Browser** (WebSearch and WebFetch): the query or URL types into the address bar, a loading bar runs until the result is in, then the page renders. A search shows each result's title, domain and URL, plus the summary text that came back with the results. A fetch shows the domain, the HTTP status and size, what Claude asked about the page, and the answer it got.
 
 **What counts as a CLI.** Every shell command gets the terminal. The title bar names the program that matters in the command line, the same way the activity feed does: `git status`, `GitHub CLI pr`, `npm test`, `curl api.example.com`, `xcodebuild`, or the program's own name, or `sh`. MCP tool calls don't get a screen: they are often rapid-fire (a browser automation can make dozens of calls a minute), which would make the stage flicker and hold up file edits, and their card in the activity feed already shows the call, its input and its result.
 
-**Playing, replaying and skipping.** Screens queue with file edits and play in order, at the speed set in the footer. A long-running command doesn't hold the queue: if other work is waiting, the edit plays, and the command's output plays when it arrives. Each screen gets a tick in the timeline (green for commands, purple for the web); click one to replay it. While a screen plays, **Skip** jumps to its end; afterwards, **Replay** plays it again. The Terminal or Browser tab reopens the last screen, and clicking a command's card in the feed opens its screen. With reduced motion turned on in your system settings, screens show their text at once, without typing, flicker or the power-on effect.
+**Playing, replaying and skipping.** Screens queue with file edits and play in order, at the speed set in the footer. A long-running command doesn't hold the queue: if other work is waiting, the edit plays, and the command's output plays when it arrives. Each screen gets a tick in the timeline (green for commands, purple for the web); click one to replay it. While a screen plays, **Skip** jumps to its end; afterwards, **Replay** plays it again. The Terminal or Browser tab reopens the last screen, and clicking a command's card in the feed opens its screen. With reduced motion turned on in your system settings, screens show their text at once, without typing, sliding lines, flicker or the power-on effect.
 
 **Where the data comes from.** The `PreToolUse` hook starts a screen (the command, query or URL), and `PostToolUse` or `PostToolUseFailure` finishes it (stdout and stderr, or the failure text and its `Exit code N` line; the search results; the fetch status and answer). Search results carry titles and URLs only, so there are no per-result snippets.
 

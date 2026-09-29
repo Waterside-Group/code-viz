@@ -26,6 +26,7 @@ const DEFAULTS = {
   burnWindowMinutes: 20,
   terminalScreen: true,
   browserScreen: true,
+  terminalStyle: 'editor',
   terminalColor: 'orange',
   screenLines: 200,
   checkForUpdates: true,
@@ -34,6 +35,7 @@ const DEFAULTS = {
 };
 const UPDATE_ON = new Set(['commit', 'version']);
 const COLORS = new Set(['orange', 'green', 'amber']);
+const STYLES = new Set(['editor', 'retro']);
 const THEMES = new Set(['auto', 'light', 'dark']);
 const PERIODS = new Set(['today', 'window']);
 const SPEEDS = new Set([0.5, 1, 2, 4]);
@@ -85,6 +87,7 @@ function load() {
     burnWindowMinutes: Math.min(120, Math.max(5, positive(file.burnWindowMinutes, DEFAULTS.burnWindowMinutes))),
     terminalScreen: pick(bool(file.terminalScreen), DEFAULTS.terminalScreen),
     browserScreen: pick(bool(file.browserScreen), DEFAULTS.browserScreen),
+    terminalStyle: STYLES.has(file.terminalStyle) ? file.terminalStyle : DEFAULTS.terminalStyle,
     terminalColor: COLORS.has(file.terminalColor) ? file.terminalColor : DEFAULTS.terminalColor,
     screenLines: Math.round(Math.min(2000, Math.max(10, positive(file.screenLines, DEFAULTS.screenLines)))),
     checkForUpdates: pick(bool(env.CODE_VIZ_CHECK_UPDATES), bool(file.checkForUpdates), DEFAULTS.checkForUpdates),
@@ -101,7 +104,7 @@ function positive(v, fallback) {
 // The options the viewer applies at page load (as defaults for its footer toggles).
 function viewerOptions(cfg) {
   const c = cfg || load();
-  return { theme: c.theme, speed: c.speed, follow: c.follow, wrap: c.wrap, authors: c.authors, usage: c.usage, terminalColor: c.terminalColor };
+  return { theme: c.theme, speed: c.speed, follow: c.follow, wrap: c.wrap, authors: c.authors, usage: c.usage, terminalStyle: c.terminalStyle, terminalColor: c.terminalColor };
 }
 
 module.exports = { HOME, FILE, DEFAULTS, readFile, load, viewerOptions };
