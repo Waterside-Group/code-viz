@@ -26,7 +26,8 @@ const { Usage } = require('./usage');
 const { Screens } = require('./screens');
 const settings = require('./config');
 
-const VERSION = require('../.claude-plugin/plugin.json').version;
+// Code Viz's release number (plugin.json has none, so Claude Code versions the plugin by commit).
+const VERSION = require('../version.json').version;
 const PORT = settings.load().port;
 const HOME = settings.HOME;
 const VIEWER = path.join(__dirname, 'viewer');
@@ -656,7 +657,7 @@ function local(req, res, pathname, url) {
       return json(res, 200, usage.snapshot());
     }
     if (pathname === '/__cv/health') {
-      return json(res, 200, { name: 'code-viz', version: VERSION, pid: process.pid, port: PORT, upstream: UPSTREAM.origin, live: liveInfo(), github: blamer.githubStatus(), viewers: clients.size });
+      return json(res, 200, { name: 'code-viz', version: VERSION, pid: process.pid, port: PORT, root: path.resolve(__dirname, '..'), upstream: UPSTREAM.origin, live: liveInfo(), github: blamer.githubStatus(), viewers: clients.size });
     }
     const sm = pathname.match(/^\/__cv\/screen\/(\d+)$/);
     if (sm) {

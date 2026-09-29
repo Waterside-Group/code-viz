@@ -28,7 +28,11 @@ const DEFAULTS = {
   browserScreen: true,
   terminalColor: 'green',
   screenLines: 200,
+  checkForUpdates: true,
+  updateCheckIntervalHours: 6,
+  updateOn: 'commit',
 };
+const UPDATE_ON = new Set(['commit', 'version']);
 const COLORS = new Set(['green', 'amber']);
 const THEMES = new Set(['auto', 'light', 'dark']);
 const PERIODS = new Set(['today', 'window']);
@@ -83,6 +87,9 @@ function load() {
     browserScreen: pick(bool(file.browserScreen), DEFAULTS.browserScreen),
     terminalColor: COLORS.has(file.terminalColor) ? file.terminalColor : DEFAULTS.terminalColor,
     screenLines: Math.round(Math.min(2000, Math.max(10, positive(file.screenLines, DEFAULTS.screenLines)))),
+    checkForUpdates: pick(bool(env.CODE_VIZ_CHECK_UPDATES), bool(file.checkForUpdates), DEFAULTS.checkForUpdates),
+    updateCheckIntervalHours: file.updateCheckIntervalHours === 0 ? 0 : Math.min(168, positive(file.updateCheckIntervalHours, DEFAULTS.updateCheckIntervalHours)),
+    updateOn: UPDATE_ON.has(file.updateOn) ? file.updateOn : DEFAULTS.updateOn,
     error,
   };
 }

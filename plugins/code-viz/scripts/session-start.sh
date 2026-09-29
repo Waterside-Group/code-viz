@@ -4,7 +4,8 @@
 #  - in the Claude desktop app, ask Claude to open the viewer in the browser pane, unless
 #    auto-open is off or the user keeps that instruction in their own CLAUDE.md (added by
 #    /code-viz:setup), so it is not given twice;
-#  - the first time Code Viz runs, ask Claude to offer /code-viz:setup once.
+#  - the first time Code Viz runs, ask Claude to offer /code-viz:setup once;
+#  - when a newer commit is on main, ask Claude to offer the update (code-viz update check).
 DIR="$(dirname "$0")"
 . "$DIR/common.sh"
 PORT="$(cv_port)"
@@ -22,6 +23,10 @@ if [ ! -e "$CV_HOME/setup-offered" ] && mkdir -p "$CV_HOME" 2>/dev/null \
     && date -u '+%Y-%m-%dT%H:%M:%SZ' >"$CV_HOME/setup-offered" 2>/dev/null; then
   CONTEXT="$CONTEXT${CONTEXT:+ }Code Viz was just installed and this is its first session. Once, at the end of your reply to the user's first prompt, add one short sentence offering to run /code-viz:setup, which can add a line to their CLAUDE.md that opens the viewer, connect GitHub so line authors show GitHub names and avatars, and show plan usage in the viewer's usage strip. Only run it if the user says yes, and don't repeat the offer later."
 fi
+# Updates: prints a request to ask the user, only when a newer commit is on offer. Capped at
+# a few seconds and silent when offline (see server/update.js).
+UPDATE="$("$DIR/../bin/code-viz" update check --hook 2>/dev/null)"
+if [ -n "$UPDATE" ]; then CONTEXT="$CONTEXT${CONTEXT:+ }$UPDATE"; fi
 if [ -n "$CONTEXT" ]; then
   printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$CONTEXT"
 fi

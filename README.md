@@ -66,6 +66,7 @@ code-viz open         open the viewer in your default browser
 code-viz url          start the server if needed and print the viewer URL
 code-viz demo         play the demo in any open viewer
 code-viz config       show the config file path and the effective settings
+code-viz update ...   check for a newer commit (check [--force]), install it (apply), or skip it (skip)
 code-viz usage        token usage per repo and the 5-hour session, as text
 code-viz setup ...    the steps behind /code-viz:setup (status, claude-md add|remove, statusline add|remove, done)
 code-viz live on|off [--project <dir>]
@@ -228,9 +229,9 @@ What to know before turning it on:
 
 The hooks forward each event to the server with `curl` and always exit successfully without printing anything, so they can't block or slow a tool call or add to Claude's context. The server (plain Node.js, no dependencies) merges the three sources into one feed and pushes it to the viewer over Server-Sent Events. If the server isn't running, the next hook starts it. A session that started with an older copy of the plugin never replaces a newer server.
 
-**What stays local, and what doesn't.** The server listens on `127.0.0.1` only and rejects requests with a foreign `Host` or `Origin`, so web pages can't read it. It only serves files Claude has touched in a session. It reads your session transcripts and the files Claude edits. The usage strip reads only usage numbers from the transcripts (see [Token usage](#token-usage)). Network requests: the viewer loads highlight.js from cdnjs for syntax highlighting, avatars load from GitHub, the GitHub lookups above run through `gh` when signed in, and live mode forwards API traffic as described. Nothing else leaves your machine.
+**What stays local, and what doesn't.** The server listens on `127.0.0.1` only and rejects requests with a foreign `Host` or `Origin`, so web pages can't read it. It only serves files Claude has touched in a session. It reads your session transcripts and the files Claude edits. The usage strip reads only usage numbers from the transcripts (see [Token usage](#token-usage)). Network requests: the viewer loads highlight.js from cdnjs for syntax highlighting, avatars load from GitHub, the GitHub lookups above run through `gh` when signed in, the update check reads the repository's latest commit from GitHub (see [Updates](#updates)), and live mode forwards API traffic as described. Nothing else leaves your machine.
 
-State lives in `~/.claude/code-viz/`: `config.json`, `server.log`, `server.pid`, `claude-lines.json` (lines Claude wrote, so uncommitted lines are credited correctly), `github-cache.json`, `backups/`, `setup-offered` (so setup is offered only once), and, if you set the status line forwarder, `statusline.sh` and `statusline-previous.*` (your previous status line, for restoring it). Token usage and plan usage are kept in memory only.
+State lives in `~/.claude/code-viz/`: `config.json`, `server.log`, `server.pid`, `claude-lines.json` (lines Claude wrote, so uncommitted lines are credited correctly), `github-cache.json`, `backups/`, `setup-offered` (so setup is offered only once), `update.json` and `update-cache.git` (the update check), and, if you set the status line forwarder, `statusline.sh` and `statusline-previous.*` (your previous status line, for restoring it). Token usage and plan usage are kept in memory only.
 
 ### Layout
 
@@ -242,6 +243,8 @@ plugins/code-viz/
   scripts/                        hook.sh (curl forwarder), ensure-server.sh, session-start.sh, common.sh, statusline.sh
   commands/code-viz.md            /code-viz:code-viz
   commands/setup.md               /code-viz:setup
+  commands/update.md              /code-viz:update
+  version.json                    Code Viz's release number (plugin.json has none; see Updates)
   bin/code-viz                    CLI (on PATH in Claude Code sessions)
   server/server.js                hook receiver, API proxy + stream tap, SSE to the viewer
   server/config.js                settings: config file, environment, defaults
@@ -252,6 +255,7 @@ plugins/code-viz/
   server/usage.js                 token usage per repo from transcripts, and the 5-hour session
   server/screens.js               terminal and browser screens from hook events
   server/redact.js                removes obvious secrets from commands and output
+  server/update.js                the update check and the update itself
   server/partial-json.js          incremental parser for streamed tool input
   server/demo.js                  the demo
   server/viewer/                  the viewer (index.html, app.js, style.css, diff.js)
@@ -261,6 +265,7 @@ plugins/code-viz/
 
 - **The viewer doesn't load.** Ask Claude to run `code-viz status`, or look at `~/.claude/code-viz/server.log`. "node was not found" means Node.js 18+ isn't installed or isn't in a standard location. "port 4455 is in use by another program" means something else has the port: set `port` in the config.
 - **The feed stays empty.** Hooks load when a session starts, so start a new session (or run `/reload-plugins`) after installing or updating.
+- **Claude never asks about updates.** Run `code-viz update check --force`. It says whether you're up to date, whether you skipped the latest commit, or why it couldn't check (offline, or a copy loaded from a local directory).
 - **The desktop app doesn't open the viewer.** Check that `autoOpen` isn't off (`code-viz config`). You can always run `/code-viz:code-viz`.
 - **Line authors show git names, not GitHub profiles.** Run `gh auth status`. Signing in is optional; see [Line authors](#line-authors). Profiles only appear for commits pushed to a github.com repository.
 - **No syntax highlighting.** highlight.js loads from cdnjs; without network the code shows as plain text.
@@ -277,14 +282,37 @@ plugins/code-viz/
 - Uncommitted lines are credited to Claude only if Code Viz saw Claude write them; other uncommitted lines go to your git user.
 - Files over 2 MB and binary files are skipped.
 
-## Update
+## Updates
 
-```bash
-claude plugin marketplace update code-viz
-claude plugin update code-viz@code-viz
-```
+**Code Viz checks for updates at the start of a session.** Any new commit on the repository's `main` branch counts as an update. When there is one, Claude asks you once in that session, showing the installed and the latest commit and the commit subjects in between, with three choices:
 
-Then start a new session. The new version replaces the running server on the next prompt.
+- **Update now**: Claude runs `code-viz update apply`, which runs Claude Code's own update commands for this marketplace and plugin and confirms the new commit is installed:
+
+  ```bash
+  claude plugin marketplace update code-viz
+  claude plugin update code-viz@code-viz
+  ```
+
+  The new version loads in your next session (or after `/reload-plugins`), and the viewer's server switches over on the first prompt there.
+- **Not now**: nothing changes; you're asked again next session.
+- **Skip this update**: you aren't asked again until a newer commit lands.
+
+Run `/code-viz:update` to check and update on demand, or `code-viz update check` for the status as text.
+
+How it works:
+
+- The installed commit is the one Claude Code recorded when it installed or last updated the plugin. The latest commit comes from `git ls-remote https://github.com/Waterside-Group/code-viz refs/heads/main`: a public read with no sign-in and no API rate limit. When they differ, Code Viz fetches the last 50 commits of `main` into its own small cache repository (`~/.claude/code-viz/update-cache.git`) to list the commits in between; it never touches Claude Code's copy of the marketplace.
+- The check has a hard time limit of a couple of seconds, fails quietly when you're offline, and runs at most every `updateCheckIntervalHours` (6 by default). The result is kept in `~/.claude/code-viz/update.json`.
+- `plugin.json` deliberately has no `version`, so Claude Code versions Code Viz by commit and `claude plugin update` installs every new commit. (With a version in `plugin.json`, Claude Code would ignore new commits until the version changed.) Code Viz's own release number is in `plugins/code-viz/version.json`. Because of this, `claude plugin validate` passes with one warning ("No version specified"), and `--strict` reports it as an error.
+- Claude Code also has a built-in background auto-update, which is off for marketplaces like this one until you turn it on: `/plugin`, **Marketplaces**, select `code-viz`, **Enable auto-update**. With it on, Claude Code updates Code Viz by itself after a session starts, and you can set `checkForUpdates` to `false`.
+
+| Setting | Env variable | Default | What it does |
+| --- | --- | --- | --- |
+| `checkForUpdates` | `CODE_VIZ_CHECK_UPDATES` (`0` or `1`) | `true` | Check for updates at session start. |
+| `updateCheckIntervalHours` | | `6` | Check at most this often. `0` checks every session. |
+| `updateOn` | | `"commit"` | `"commit"`: any new commit on `main` is an update, including commits that only change the README or docs. `"version"`: only a new release number in `version.json`, the quieter choice. |
+
+A copy loaded from a local directory (a marketplace added as a folder, or `--plugin-dir`) isn't updated by Claude Code, so Code Viz doesn't offer updates for it; update it with `git pull`.
 
 ## Uninstall
 

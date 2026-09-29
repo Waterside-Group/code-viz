@@ -5,8 +5,12 @@ DIR="$(dirname "$0")"
 . "$DIR/common.sh"
 PORT="$(cv_port)"
 ROOT="$(cd "$DIR/.." && pwd)"
-WANT="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$ROOT/.claude-plugin/plugin.json" | head -n 1)"
-HAVE="$(curl -s -m 1 "http://127.0.0.1:$PORT/__cv/health" 2>/dev/null | sed -n 's/.*"name":"code-viz","version":"\([^"]*\)".*/\1/p')"
+WANT="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$ROOT/version.json" | head -n 1)"
+HEALTH="$(curl -s -m 1 "http://127.0.0.1:$PORT/__cv/health" 2>/dev/null)"
+HAVE="$(printf '%s' "$HEALTH" | sed -n 's/.*"name":"code-viz","version":"\([^"]*\)".*/\1/p')"
+HAVE_ROOT="$(printf '%s' "$HEALTH" | sed -n 's/.*"root":"\([^"]*\)".*/\1/p')"
+# A server running from a copy that Claude Code has removed (after an update) is replaced.
+if [ -n "$HAVE_ROOT" ] && [ ! -d "$HAVE_ROOT" ]; then HAVE=""; fi
 # Sessions keep the plugin copy they started with, so an older session leaves a newer server
 # alone instead of replacing it with its own version.
 if [ -n "$HAVE" ] && awk -v a="$HAVE" -v b="$WANT" 'BEGIN { n = split(a, x, "."); m = split(b, y, "."); k = n > m ? n : m;
