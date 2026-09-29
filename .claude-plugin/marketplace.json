@@ -1,0 +1,17 @@
+{
+  "name": "code-viz",
+  "description": "Code Viz: watch Claude Code edit your files, live, in a local viewer.",
+  "owner": {
+    "name": "Waterside Group",
+    "url": "https://github.com/Waterside-Group"
+  },
+  "plugins": [
+    {
+      "name": "code-viz",
+      "source": "./plugins/code-viz",
+      "description": "Watch Claude work: a live activity feed of every prompt, thought and tool call, and an animated view of every file edit, with the author of each line.",
+      "category": "productivity",
+      "tags": ["visualization", "diff", "activity", "git-blame"]
+    }
+  ]
+}

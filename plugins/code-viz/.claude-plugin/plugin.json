@@ -1,0 +1,14 @@
+{
+  "name": "code-viz",
+  "displayName": "Code Viz",
+  "version": "0.5.0",
+  "description": "Watch Claude work. A local viewer with a live activity feed (prompts, thinking, and every tool call) that opens each file Claude edits and animates every insertion, deletion and rewrite, with the author of each line from git.",
+  "author": {
+    "name": "Waterside Group",
+    "url": "https://github.com/Waterside-Group"
+  },
+  "homepage": "https://github.com/Waterside-Group/code-viz",
+  "repository": "https://github.com/Waterside-Group/code-viz",
+  "license": "MIT",
+  "keywords": ["visualization", "diff", "hooks", "live", "editor", "activity", "thinking", "git-blame"]
+}

@@ -1,0 +1,15 @@
+#!/bin/sh
+# code-viz command line (see server/cli.js). Resolves symlinks so it can be linked onto PATH.
+SELF="$0"
+while [ -L "$SELF" ]; do
+  LINK="$(readlink "$SELF")"
+  case "$LINK" in /*) SELF="$LINK" ;; *) SELF="$(dirname "$SELF")/$LINK" ;; esac
+done
+ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+. "$ROOT/scripts/common.sh"
+NODE="$(cv_node)"
+if [ -z "$NODE" ]; then
+  echo "code-viz: node was not found; Code Viz needs Node.js 18 or newer (https://nodejs.org)" >&2
+  exit 1
+fi
+exec "$NODE" "$ROOT/server/cli.js" "$@"

@@ -1,0 +1,29 @@
+{
+  "description": "Code Viz: snapshot files around Write/Edit, report every tool call and turn to the activity feed, and stream it all to the local viewer",
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/session-start.sh\"", "timeout": 15 }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [
+        { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/ensure-server.sh\"", "timeout": 15 },
+        { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hook.sh\"", "timeout": 5 }
+      ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hook.sh\"", "timeout": 5 }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hook.sh\"", "timeout": 5 }] }
+    ],
+    "PostToolUseFailure": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hook.sh\"", "timeout": 5 }] }
+    ],
+    "PermissionDenied": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hook.sh\"", "timeout": 5 }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hook.sh\"", "timeout": 5 }] }
+    ]
+  }
+}

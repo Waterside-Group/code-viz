@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Viz</title>
+<link rel="icon" href="/__cv/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/__cv/style.css">
+<style id="focus-style"></style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" defer></script>
+<script src="/__cv/config.js" defer></script>
+<script src="/__cv/diff.js" defer></script>
+<script src="/__cv/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="file">
+    <div class="ficon" id="ficon" aria-hidden="true">{ }</div>
+    <div class="names">
+      <div class="fname" id="fname">Code Viz</div>
+      <div class="fpath" id="fpath">Waiting for Claude to edit a file</div>
+    </div>
+  </div>
+  <div class="right">
+    <span class="stats" id="stats"></span>
+    <span class="pill idle" id="status" role="status" aria-live="polite"><i></i><span id="status-text">Connecting</span></span>
+  </div>
+</header>
+<nav class="tabs" id="tabs" aria-label="Recently edited files"></nav>
+<div class="people" id="people" hidden>
+  <div class="pbar" id="pbar" aria-hidden="true"></div>
+  <div class="pchips" id="pchips" aria-label="Who wrote this file"></div>
+  <span class="psrc" id="psrc"></span>
+</div>
+<main class="stage">
+  <div class="code" id="code" tabindex="0" aria-label="File contents"><div class="rows" id="rows"></div></div>
+  <div class="marks" id="marks" aria-hidden="true"></div>
+  <div class="banner" id="banner" hidden><span id="banner-text"></span><button id="banner-btn" type="button">Back to latest</button></div>
+  <button class="now" id="now" type="button" hidden title="Show the activity feed"></button>
+  <section class="feed" id="feed" aria-label="Activity" aria-live="polite">
+    <div class="fhead" id="fhead"><span>Activity</span><em id="fcount"></em></div>
+    <div class="flist" id="flist"></div>
+    <div class="flive" id="flive"></div>
+    <button class="fjump" id="fjump" type="button" hidden>New activity ↓</button>
+  </section>
+  <section class="empty" id="empty">
+    <div class="card">
+      <svg class="glyph" viewBox="0 0 64 64" aria-hidden="true">
+        <rect x="6" y="10" width="52" height="44" rx="9" fill="none" stroke="currentColor" stroke-width="2.5" opacity=".35"/>
+        <path d="M16 24h14M16 32h22M16 40h9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity=".55"/>
+        <rect class="glyph-caret" x="28" y="36" width="2.5" height="9" rx="1.2"/>
+      </svg>
+      <h1>Watching Claude work</h1>
+      <p>Every prompt, thought and tool call shows up in the activity feed as it happens: shell commands, database queries, deploys, browser steps. When Claude edits a file it opens here so you can watch the code change.</p>
+      <ul class="checks">
+        <li id="chk-conn"><span class="b"></span>Connected to the Code Viz server</li>
+        <li id="chk-act"><span class="b"></span>Activity: <em id="act-state">waiting for a Claude Code session</em></li>
+        <li id="chk-live"><span class="b"></span>Keystroke streaming: <em id="live-state">off</em></li>
+        <li id="chk-gh"><span class="b"></span>GitHub: <em id="gh-state">checking</em></li>
+      </ul>
+      <button class="primary" id="demo" type="button">Play a demo</button>
+      <p class="hint" id="live-hint">Tool calls come from Claude Code's hooks and thinking from the session transcript, so both work in the desktop app and the terminal. Terminal sessions can also stream edits and thinking token by token: run <code>code-viz live on</code>. The desktop app sets its own API address, so this part does not apply there.</p>
+    </div>
+  </section>
+</main>
+<footer class="bar">
+  <span class="mode" id="mode" title="">Replay</span>
+  <div class="timeline" id="timeline" aria-label="Edit history"></div>
+  <button class="icon" id="replay" type="button" title="Replay the last edit" aria-label="Replay the last edit">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8a4.5 4.5 0 1 0 1.4-3.26" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M4.6 1.8v3.2h3.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <div class="seg" id="speed" role="group" aria-label="Animation speed">
+    <button type="button" data-v="0.5">½×</button><button type="button" data-v="1">1×</button><button type="button" data-v="2">2×</button><button type="button" data-v="4">4×</button>
+  </div>
+  <button class="icon toggle" id="authors" type="button" title="Show who wrote each line" aria-label="Show who wrote each line">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="5.2" r="2.4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M1.8 13.2c.6-2.3 2.2-3.5 4.2-3.5s3.6 1.2 4.2 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M10.6 3.3a2.3 2.3 0 0 1 0 4.2M12.2 9.9c1 .6 1.7 1.7 2 3.3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+  </button>
+  <button class="icon toggle" id="wrap" type="button" title="Wrap long lines" aria-label="Wrap long lines">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h12M2 8h9a2.5 2.5 0 0 1 0 5H7.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M9.2 11.3 7.5 13l1.7 1.7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 12.5h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+  </button>
+  <button class="icon toggle" id="follow" type="button" title="Follow edits: jump to each file and change as it happens" aria-label="Follow edits">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.2" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="1.8" fill="currentColor"/></svg>
+  </button>
+</footer>
+<div class="acard" id="author-card" role="tooltip" hidden></div>
+</body>
+</html>

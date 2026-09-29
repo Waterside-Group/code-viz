@@ -1,0 +1,19 @@
+# Dependencies (Code Viz has none; keep them out if any are added)
+node_modules/
+
+# Logs, pid files and temp files
+*.log
+*.pid
+*.tmp
+
+# Environment and secrets
+.env
+.env.*
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
